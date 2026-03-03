@@ -112,14 +112,19 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
       const duration = calculateDuration();
       const totalPrice = calculateTotalPrice();
 
-      // Prepare booking data with correct column names
+      // Format time as HH:mm:ss for TIME columns
+      const formatTimeOnly = (date: Date): string => {
+        return format(date, 'HH:mm:ss');
+      };
+
+      // Prepare booking data with correct column names and types
       const bookingData = {
         pitch_id: pitch.id,
         full_name: customerName.trim(),
         phone: customerPhone.trim(),
-        start_time: selectedTimeSlot.start.toISOString(),
-        end_time: selectedTimeSlot.end.toISOString(),
-        booking_date: format(selectedDate, 'yyyy-MM-dd'),
+        start_time: formatTimeOnly(selectedTimeSlot.start), // TIME format: '18:00:00'
+        end_time: formatTimeOnly(selectedTimeSlot.end),     // TIME format: '20:00:00'
+        booking_date: format(selectedDate, 'yyyy-MM-dd'),   // DATE format: '2026-03-03'
         total_price: totalPrice,
         status: 'confirmed',
       };

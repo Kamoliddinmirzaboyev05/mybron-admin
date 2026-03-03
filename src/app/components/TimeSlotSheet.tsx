@@ -60,11 +60,18 @@ export default function TimeSlotSheet({ pitch, date, onSelectSlot, onClose }: Ti
         const slotStart = setMinutes(setHours(date, currentHour), 0);
         const slotEnd = setMinutes(setHours(date, currentHour + 1), 0);
 
-        // Advanced overlap validation: N_Start < E_End AND N_End > E_Start
+        // Format times for comparison (HH:mm:ss)
+        const slotStartTime = format(slotStart, 'HH:mm:ss');
+        const slotEndTime = format(slotEnd, 'HH:mm:ss');
+
+        // Check overlap with TIME columns
         const isBooked = bookings?.some((booking) => {
-          const bookingStart = new Date(booking.start_time);
-          const bookingEnd = new Date(booking.end_time);
-          return slotStart < bookingEnd && slotEnd > bookingStart;
+          // booking.start_time and booking.end_time are TIME strings like '18:00:00'
+          const bookingStart = booking.start_time;
+          const bookingEnd = booking.end_time;
+          
+          // Overlap logic: N_Start < E_End AND N_End > E_Start
+          return slotStartTime < bookingEnd && slotEndTime > bookingStart;
         });
 
         slots.push({

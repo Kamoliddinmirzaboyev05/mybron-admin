@@ -51,8 +51,15 @@ export default function BookingsPage() {
   };
 
   const calculateBookingDuration = (startTime: string, endTime: string) => {
-    const duration = (new Date(endTime).getTime() - new Date(startTime).getTime()) / (1000 * 60 * 60);
-    return duration;
+    // Parse TIME strings (HH:mm:ss) to calculate duration
+    const [startHour, startMin] = startTime.split(':').map(Number);
+    const [endHour, endMin] = endTime.split(':').map(Number);
+    
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+    const durationHours = (endMinutes - startMinutes) / 60;
+    
+    return durationHours;
   };
 
   const filteredBookings = bookings.filter((booking) => {
@@ -94,56 +101,39 @@ export default function BookingsPage() {
     <div className="pb-24 bg-zinc-950 min-h-screen">
       {/* Header */}
       <div className="px-4 pt-6 pb-4">
-        <div className="flex items-center gap-3 mb-4">
-          <img 
-            src="/bronlogo.png" 
-            alt="Bron Logo" 
-            className="h-10 w-auto"
-          />
-          <h1 className="text-2xl font-bold text-white">Barcha bronlar</h1>
-        </div>
+        <h1 className="text-2xl font-bold text-white mb-4">Barcha bronlar</h1>
 
-        {/* Filter Chips */}
-        <div className="flex gap-2 overflow-x-auto pb-2">
+        {/* Filter Tabs */}
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide">
           <button
             onClick={() => setFilter('all')}
             className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               filter === 'all'
                 ? 'bg-blue-600 text-white'
-                : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                : 'bg-zinc-900 text-zinc-400'
             }`}
           >
             Hammasi ({bookings.length})
-          </button>
-          <button
-            onClick={() => setFilter('pending')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-              filter === 'pending'
-                ? 'bg-blue-600 text-white'
-                : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
-            }`}
-          >
-            Kutilmoqda ({bookings.filter((b) => b.status === 'pending').length})
           </button>
           <button
             onClick={() => setFilter('confirmed')}
             className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               filter === 'confirmed'
                 ? 'bg-blue-600 text-white'
-                : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                : 'bg-zinc-900 text-zinc-400'
             }`}
           >
-            Tasdiqlangan ({bookings.filter((b) => b.status === 'confirmed' || b.status === 'manual').length})
+            Kutilmoqda ({bookings.filter((b) => b.status === 'confirmed' || b.status === 'manual').length})
           </button>
           <button
             onClick={() => setFilter('rejected')}
             className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               filter === 'rejected'
                 ? 'bg-blue-600 text-white'
-                : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                : 'bg-zinc-900 text-zinc-400'
             }`}
           >
-            Rad etilgan ({bookings.filter((b) => b.status === 'rejected').length})
+            Tasdiqlangan ({bookings.filter((b) => b.status === 'rejected').length})
           </button>
         </div>
       </div>
@@ -159,36 +149,38 @@ export default function BookingsPage() {
           filteredBookings.map((booking) => (
             <div
               key={booking.id}
-              className="bg-zinc-900 border border-zinc-800 rounded-xl p-4"
+              className="bg-zinc-900 rounded-xl p-4"
             >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <User className="w-4 h-4 text-zinc-400" />
-                    <p className="text-white font-medium">{booking.full_name}</p>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-zinc-400">
-                    <Phone className="w-3.5 h-3.5" />
-                    <span>{booking.phone}</span>
-                  </div>
-                </div>
-                {getStatusBadge(booking.status)}
+              {/* Name with icon */}
+              <div className="flex items-center gap-2 mb-3">
+                <User className="w-5 h-5 text-zinc-400 flex-shrink-0" />
+                <p className="text-white font-medium truncate">{booking.full_name}</p>
               </div>
 
-              <div className="flex items-center gap-4 text-sm text-zinc-400 mb-2">
-                <div className="flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5" />
-                  <span>{booking.pitches?.name}</span>
-                </div>
+              {/* Phone */}
+              <div className="flex items-center gap-2 text-sm text-zinc-400 mb-2">
+                <Phone className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">{booking.phone}</span>
               </div>
 
-              <div className="flex items-center gap-1.5 text-sm text-zinc-400">
-                <Clock className="w-3.5 h-3.5" />
-                <span>
-                  {format(new Date(booking.start_time), 'dd MMM, HH:mm')} -{' '}
-                  {format(new Date(booking.end_time), 'HH:mm')}
+              {/* Location */}
+              <div className="flex items-center gap-2 text-sm text-zinc-400 mb-2">
+                <MapPin className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">{booking.pitches?.name}</span>
+              </div>
+
+              {/* Date and Time */}
+              <div className="flex items-center gap-2 text-sm text-zinc-400 mb-3">
+                <Clock className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">
+                  {booking.booking_date ? format(new Date(booking.booking_date), 'dd MMM') : 'N/A'}, {booking.start_time.substring(0, 5)} - {booking.end_time.substring(0, 5)}
                   {' '}({calculateBookingDuration(booking.start_time, booking.end_time)} soat)
                 </span>
+              </div>
+
+              {/* Status Badge at bottom */}
+              <div className="flex justify-end">
+                {getStatusBadge(booking.status)}
               </div>
             </div>
           ))

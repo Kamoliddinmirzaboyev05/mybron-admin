@@ -30,6 +30,16 @@ html {
   scrollbar-color: #3f3f46 #18181b;
 }
 
+/* Hide scrollbar completely */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
+
 /* Custom Select Dropdown Styling */
 select {
   appearance: none;
