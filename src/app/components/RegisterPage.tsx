@@ -16,13 +16,26 @@ export default function RegisterPage() {
     setError('');
     setLoading(true);
 
-    const { error } = await signUp(email, password, name);
-    
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-    } else {
-      setSuccess(true);
+    try {
+      const { error } = await signUp(email, password, name);
+      
+      if (error) {
+        // Show full error details for debugging
+        const errorMessage = error.message || "Ro'yxatdan o'tishda xatolik";
+        console.error('Sign up error:', error);
+        setError(errorMessage);
+        setLoading(false);
+      } else {
+        setSuccess(true);
+        setLoading(false);
+        // Redirect to dashboard after 1.5 seconds
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 1500);
+      }
+    } catch (err: any) {
+      console.error('Sign up exception:', err);
+      setError(err?.message || "Ro'yxatdan o'tishda xatolik yuz berdi");
       setLoading(false);
     }
   };
@@ -31,17 +44,16 @@ export default function RegisterPage() {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
         <div className="w-full max-w-md text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-green-600 mb-4">
-            <UserPlus className="w-8 h-8 text-white" />
+          <div className="flex justify-center mb-4">
+            <img 
+              src="/bronlogo.png" 
+              alt="Bron Logo" 
+              className="h-20 w-auto"
+            />
           </div>
           <h2 className="text-2xl font-bold text-white mb-2">Muvaffaqiyatli!</h2>
-          <p className="text-zinc-400 mb-6">Hisobingiz yaratildi. Endi tizimga kirishingiz mumkin.</p>
-          <a
-            href="/login"
-            className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors"
-          >
-            Tizimga kirish
-          </a>
+          <p className="text-zinc-400 mb-4">Admin hisobingiz yaratildi.</p>
+          <p className="text-zinc-500 text-sm">Dashboard'ga yo'naltirilmoqda...</p>
         </div>
       </div>
     );
@@ -51,8 +63,12 @@ export default function RegisterPage() {
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 mb-4">
-            <UserPlus className="w-8 h-8 text-white" />
+          <div className="flex justify-center mb-4">
+            <img 
+              src="/bronlogo.png" 
+              alt="Bron Logo" 
+              className="h-20 w-auto"
+            />
           </div>
           <h1 className="text-2xl font-bold text-white mb-2">Ro'yxatdan o'tish</h1>
           <p className="text-zinc-400">Admin hisobini yaratish</p>
@@ -126,9 +142,12 @@ export default function RegisterPage() {
 
         <p className="text-center text-zinc-400 text-sm mt-6">
           Hisobingiz bormi?{' '}
-          <a href="/login" className="text-blue-500 hover:text-blue-400">
+          <button 
+            onClick={() => window.location.href = '/login'} 
+            className="text-blue-500 hover:text-blue-400 underline"
+          >
             Tizimga kirish
-          </a>
+          </button>
         </p>
       </div>
     </div>

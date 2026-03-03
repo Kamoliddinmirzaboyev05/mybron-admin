@@ -7,15 +7,17 @@ import ManualBookingModal from './ManualBookingModal';
 interface Booking {
   id: string;
   pitch_id: string;
-  customer_name: string;
-  customer_phone: string;
+  full_name: string;
+  phone: string;
   start_time: string;
   end_time: string;
+  booking_date?: string;
   status: string;
   created_at: string;
+  total_price?: number;
   pitches: {
     name: string;
-    price: number;
+    price_per_hour: number;
   };
 }
 
@@ -52,8 +54,7 @@ export default function DashboardPage() {
   const fetchBookings = async () => {
     try {
       const today = new Date();
-      const startOfToday = startOfDay(today).toISOString();
-      const endOfToday = endOfDay(today).toISOString();
+      const todayDate = format(today, 'yyyy-MM-dd'); // Format: '2026-03-03'
 
       const { data, error } = await supabase
         .from('bookings')
@@ -61,26 +62,36 @@ export default function DashboardPage() {
           *,
           pitches (
             name,
-            price
+            price_per_hour
           )
         `)
-        .gte('start_time', startOfToday)
+        .eq('booking_date', todayDate)
         .order('start_time', { ascending: true });
 
       if (error) throw error;
 
       setBookings(data || []);
       
-      // Calculate statistics
+      // Calculate statistics with flexible duration support
       const todayBookings = (data || []).filter(
         (b) => b.status === 'confirmed' || b.status === 'manual'
       );
       
+      // Calculate total revenue from total_price or fallback to price_per_hour
       const revenue = todayBookings.reduce((sum, booking) => {
-        return sum + (booking.pitches?.price || 0);
+        if (booking.total_price) {
+          return sum + booking.total_price;
+        }
+        // Fallback: calculate from duration
+        const duration = (new Date(booking.end_time).getTime() - new Date(booking.start_time).getTime()) / (1000 * 60 * 60);
+        return sum + (duration * (booking.pitches?.price_per_hour || 0));
       }, 0);
       
-      const hours = todayBookings.length;
+      // Calculate total hours booked
+      const hours = todayBookings.reduce((sum, booking) => {
+        const duration = (new Date(booking.end_time).getTime() - new Date(booking.start_time).getTime()) / (1000 * 60 * 60);
+        return sum + duration;
+      }, 0);
       
       setTodayRevenue(revenue);
       setHoursBookedToday(hours);
@@ -119,6 +130,11 @@ export default function DashboardPage() {
     }
   };
 
+  const calculateBookingDuration = (startTime: string, endTime: string) => {
+    const duration = (new Date(endTime).getTime() - new Date(startTime).getTime()) / (1000 * 60 * 60);
+    return duration;
+  };
+
   const upcomingBookings = bookings.filter(
     (b) => b.status === 'confirmed' || b.status === 'manual'
   );
@@ -135,9 +151,16 @@ export default function DashboardPage() {
   return (
     <div className="pb-24 bg-zinc-950 min-h-screen">
       {/* Header */}
-      <div className="px-4 pt-6 pb-4">
-        <h1 className="text-2xl font-bold text-white mb-1">Dashboard</h1>
-        <p className="text-zinc-400 text-sm">{format(new Date(), 'EEEE, dd MMMM')}</p>
+      <div className="px-4 pt-6 pb-4 flex items-center gap-3">
+        <img 
+          src="/bronlogo.png" 
+          alt="Bron Logo" 
+          className="h-10 w-auto"
+        />
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold text-white mb-1">Dashboard</h1>
+          <p className="text-zinc-400 text-sm">{format(new Date(), 'EEEE, dd MMMM')}</p>
+        </div>
       </div>
 
       {/* Statistics Cards */}
@@ -166,10 +189,10 @@ export default function DashboardPage() {
               >
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <p className="text-white font-medium mb-1">{booking.customer_name}</p>
+                    <p className="text-white font-medium mb-1">{booking.full_name}</p>
                     <div className="flex items-center gap-2 text-zinc-400 text-sm">
                       <Phone className="w-3.5 h-3.5" />
-                      <span>{booking.customer_phone}</span>
+                      <span>{booking.phone}</span>
                     </div>
                   </div>
                   <span className="bg-yellow-950 text-yellow-400 text-xs px-2 py-1 rounded">
@@ -184,7 +207,10 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5" />
-                    <span>{format(new Date(booking.start_time), 'HH:mm')}</span>
+                    <span>
+                      {format(new Date(booking.start_time), 'HH:mm')} - {format(new Date(booking.end_time), 'HH:mm')}
+                      {' '}({calculateBookingDuration(booking.start_time, booking.end_time)} soat)
+                    </span>
                   </div>
                 </div>
 
@@ -229,10 +255,10 @@ export default function DashboardPage() {
               >
                 <div className="flex items-start justify-between mb-2">
                   <div>
-                    <p className="text-white font-medium mb-1">{booking.customer_name}</p>
+                    <p className="text-white font-medium mb-1">{booking.full_name}</p>
                     <div className="flex items-center gap-2 text-zinc-400 text-sm">
                       <Phone className="w-3.5 h-3.5" />
-                      <span>{booking.customer_phone}</span>
+                      <span>{booking.phone}</span>
                     </div>
                   </div>
                   <span className="bg-green-950 text-green-400 text-xs px-2 py-1 rounded">
@@ -249,6 +275,7 @@ export default function DashboardPage() {
                     <Clock className="w-3.5 h-3.5" />
                     <span>
                       {format(new Date(booking.start_time), 'HH:mm')} - {format(new Date(booking.end_time), 'HH:mm')}
+                      {' '}({calculateBookingDuration(booking.start_time, booking.end_time)} soat)
                     </span>
                   </div>
                 </div>

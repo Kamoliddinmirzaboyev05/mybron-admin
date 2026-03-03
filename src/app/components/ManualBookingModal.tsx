@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import { X, ChevronDown, Loader2 } from 'lucide-react';
-import { format, addDays, startOfDay, endOfDay, setHours, setMinutes } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import TimeSlotSheet from './TimeSlotSheet';
+import Toast from './Toast';
 
 interface Pitch {
   id: string;
   name: string;
-  price: number;
-  working_hours_start: string;
-  working_hours_end: string;
+  price_per_hour: number;
+  start_time: string;
+  end_time: string;
 }
 
 interface ManualBookingModalProps {
@@ -18,16 +20,16 @@ interface ManualBookingModalProps {
 }
 
 export default function ManualBookingModal({ onClose, onSuccess }: ManualBookingModalProps) {
-  const [pitches, setPitches] = useState<Pitch[]>([]);
-  const [selectedPitch, setSelectedPitch] = useState<Pitch | null>(null);
+  const { user } = useAuth();
+  const [pitch, setPitch] = useState<Pitch | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<{ start: Date; end: Date } | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPitchDropdown, setShowPitchDropdown] = useState(false);
   const [showDateDropdown, setShowDateDropdown] = useState(false);
   const [showTimeSheet, setShowTimeSheet] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const dateOptions = [
     { label: 'Bugun', date: new Date() },
@@ -36,57 +38,134 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
   ];
 
   useEffect(() => {
-    fetchPitches();
-  }, []);
+    fetchUserPitch();
+  }, [user]);
 
-  const fetchPitches = async () => {
+  const fetchUserPitch = async () => {
+    if (!user) return;
+
     try {
+      // Get pitch by owner_id
       const { data, error } = await supabase
         .from('pitches')
         .select('*')
-        .order('name');
+        .eq('owner_id', user.id)
+        .single();
 
-      if (error) throw error;
-      setPitches(data || []);
+      if (error) {
+        // If no pitch found, try to get any pitch (for testing)
+        const { data: anyPitch, error: anyError } = await supabase
+          .from('pitches')
+          .select('*')
+          .limit(1)
+          .single();
+
+        if (anyError) {
+          console.error('Error fetching pitch:', anyError);
+          setToast({ 
+            message: 'Maydon topilmadi. Iltimos avval maydon yarating', 
+            type: 'error' 
+          });
+          return;
+        }
+        
+        setPitch(anyPitch);
+        return;
+      }
+      
+      setPitch(data);
     } catch (error) {
-      console.error('Error fetching pitches:', error);
+      console.error('Error fetching pitch:', error);
     }
   };
 
+  const calculateDuration = () => {
+    if (!selectedTimeSlot) return 0;
+    const diffMs = selectedTimeSlot.end.getTime() - selectedTimeSlot.start.getTime();
+    return diffMs / (1000 * 60 * 60); // Convert to hours
+  };
+
+  const calculateTotalPrice = () => {
+    if (!pitch || !selectedTimeSlot) return 0;
+    const duration = calculateDuration();
+    return duration * pitch.price_per_hour;
+  };
+
   const handleBook = async () => {
-    if (!selectedPitch || !selectedDate || !selectedTimeSlot || !customerName || !customerPhone) {
-      alert('Iltimos barcha maydonlarni to\'ldiring');
+    // Validate all required fields
+    if (!pitch || !selectedDate || !selectedTimeSlot || !customerName.trim() || !customerPhone.trim()) {
+      setToast({ message: 'Iltimos barcha maydonlarni to\'ldiring', type: 'error' });
+      return;
+    }
+
+    // Validate phone number format (basic validation)
+    const phoneRegex = /^\+?998\s?\d{2}\s?\d{3}\s?\d{2}\s?\d{2}$/;
+    if (!phoneRegex.test(customerPhone.replace(/\s/g, ''))) {
+      setToast({ message: 'Telefon raqami noto\'g\'ri formatda', type: 'error' });
       return;
     }
 
     setLoading(true);
 
     try {
-      const { error } = await supabase.from('bookings').insert({
-        pitch_id: selectedPitch.id,
-        customer_name: customerName,
-        customer_phone: customerPhone,
+      // Calculate duration and total price
+      const duration = calculateDuration();
+      const totalPrice = calculateTotalPrice();
+
+      // Prepare booking data with correct column names
+      const bookingData = {
+        pitch_id: pitch.id,
+        full_name: customerName.trim(),
+        phone: customerPhone.trim(),
         start_time: selectedTimeSlot.start.toISOString(),
         end_time: selectedTimeSlot.end.toISOString(),
+        booking_date: format(selectedDate, 'yyyy-MM-dd'),
+        total_price: totalPrice,
         status: 'confirmed',
-      });
+      };
 
-      if (error) throw error;
+      // Insert booking - database trigger will check for overlaps
+      const { error } = await supabase.from('bookings').insert(bookingData);
 
-      onSuccess();
-    } catch (error) {
+      if (error) {
+        // Check if it's an overlap error from the trigger
+        if (error.message.includes('allaqachon bron mavjud') || 
+            error.message.includes('overlap')) {
+          setToast({ 
+            message: 'Ushbu vaqt oralig\'ida allaqachon bron mavjud!', 
+            type: 'error' 
+          });
+        } else {
+          throw error;
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Success - show toast and close modal
+      setToast({ message: 'Bron muvaffaqiyatli saqlandi!', type: 'success' });
+      
+      // Wait a bit for toast to show, then close and refresh
+      setTimeout(() => {
+        onSuccess();
+      }, 1000);
+
+    } catch (error: any) {
       console.error('Error creating booking:', error);
-      alert('Xatolik yuz berdi');
+      setToast({ 
+        message: error.message || 'Xatolik yuz berdi. Iltimos qaytadan urinib ko\'ring', 
+        type: 'error' 
+      });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-zinc-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/80 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-zinc-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[85vh] flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 bg-zinc-900 border-b border-zinc-800 px-4 py-4 flex items-center justify-between">
+        <div className="flex-shrink-0 bg-zinc-900 border-b border-zinc-800 px-4 py-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-white">Qo'lda band qilish</h2>
           <button
             onClick={onClose}
@@ -96,55 +175,26 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
           </button>
         </div>
 
-        <div className="p-4 space-y-4">
-          {/* Step 1: Select Pitch */}
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Step 1: Select Date */}
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-2">
-              1. Maydonni tanlash
-            </label>
-            <button
-              onClick={() => setShowPitchDropdown(!showPitchDropdown)}
-              className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg text-left flex items-center justify-between text-white"
-            >
-              <span>{selectedPitch ? selectedPitch.name : 'Maydonni tanlang'}</span>
-              <ChevronDown className="w-5 h-5" />
-            </button>
-            {showPitchDropdown && (
-              <div className="mt-2 bg-zinc-800 border border-zinc-700 rounded-lg overflow-hidden">
-                {pitches.map((pitch) => (
-                  <button
-                    key={pitch.id}
-                    onClick={() => {
-                      setSelectedPitch(pitch);
-                      setShowPitchDropdown(false);
-                    }}
-                    className="w-full px-4 py-3 text-left text-white hover:bg-zinc-700 transition-colors"
-                  >
-                    {pitch.name} - {pitch.price.toLocaleString()} so'm/soat
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Step 2: Select Date */}
-          <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">
-              2. Sanani belgilash
+              1. Sanani belgilash
             </label>
             <button
               onClick={() => setShowDateDropdown(!showDateDropdown)}
-              className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg text-left flex items-center justify-between text-white"
+              className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg text-left flex items-center justify-between text-white hover:bg-zinc-750 transition-colors"
             >
-              <span>
+              <span className={selectedDate ? 'text-white' : 'text-zinc-500'}>
                 {selectedDate
-                  ? dateOptions.find((d) => d.date.toDateString() === selectedDate.toDateString())?.label
+                  ? dateOptions.find((d) => d.date.toDateString() === selectedDate.toDateString())?.label || format(selectedDate, 'dd MMMM')
                   : 'Sanani tanlang'}
               </span>
-              <ChevronDown className="w-5 h-5" />
+              <ChevronDown className={`w-5 h-5 transition-transform duration-200 ${showDateDropdown ? 'rotate-180' : ''}`} />
             </button>
-            {showDateDropdown && (
-              <div className="mt-2 bg-zinc-800 border border-zinc-700 rounded-lg overflow-hidden">
+            <div className={`overflow-hidden transition-all duration-200 ease-in-out ${showDateDropdown ? 'max-h-48 mt-2' : 'max-h-0'}`}>
+              <div className="bg-zinc-800 border border-zinc-700 rounded-lg overflow-hidden">
                 {dateOptions.map((option, index) => (
                   <button
                     key={index}
@@ -152,37 +202,53 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
                       setSelectedDate(option.date);
                       setShowDateDropdown(false);
                     }}
-                    className="w-full px-4 py-3 text-left text-white hover:bg-zinc-700 transition-colors"
+                    className="w-full px-4 py-3 text-left text-white hover:bg-zinc-700 transition-colors border-b border-zinc-700 last:border-b-0"
                   >
                     {option.label}
                   </button>
                 ))}
               </div>
-            )}
+            </div>
           </div>
 
-          {/* Step 3: Select Time */}
+          {/* Step 2: Select Time */}
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-2">
-              3. Vaqtni belgilash
+              2. Vaqtni belgilash
             </label>
             <button
               onClick={() => {
-                if (selectedPitch && selectedDate) {
+                if (pitch && selectedDate) {
                   setShowTimeSheet(true);
                 } else {
-                  alert('Avval maydon va sanani tanlang');
+                  alert('Avval sanani tanlang');
                 }
               }}
-              className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg text-left flex items-center justify-between text-white"
+              className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg text-left flex items-center justify-between text-white hover:bg-zinc-750 transition-colors"
             >
-              <span>
+              <span className={selectedTimeSlot ? 'text-white' : 'text-zinc-500'}>
                 {selectedTimeSlot
                   ? `${format(selectedTimeSlot.start, 'HH:mm')} - ${format(selectedTimeSlot.end, 'HH:mm')}`
                   : 'Vaqtni tanlang'}
               </span>
               <ChevronDown className="w-5 h-5" />
             </button>
+            
+            {/* Duration and Price Display */}
+            {selectedTimeSlot && pitch && (
+              <div className="mt-3 p-3 bg-blue-900/20 border border-blue-800/30 rounded-lg">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-zinc-300">Davomiyligi:</span>
+                  <span className="text-white font-semibold">{calculateDuration()} soat</span>
+                </div>
+                <div className="flex items-center justify-between text-sm mt-1">
+                  <span className="text-zinc-300">Jami narx:</span>
+                  <span className="text-blue-400 font-semibold">
+                    {calculateTotalPrice().toLocaleString()} so'm
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Customer Details */}
@@ -213,35 +279,46 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
               />
             </div>
           </div>
+        </div>
 
-          {/* Book Button */}
+        {/* Fixed Bottom Button */}
+        <div className="flex-shrink-0 bg-zinc-900 border-t border-zinc-800 p-4 pb-safe">
           <button
             onClick={handleBook}
-            disabled={loading || !selectedPitch || !selectedDate || !selectedTimeSlot || !customerName || !customerPhone}
+            disabled={loading || !pitch || !selectedDate || !selectedTimeSlot || !customerName || !customerPhone}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-semibold py-4 px-4 rounded-lg transition-colors flex items-center justify-center"
           >
             {loading ? (
               <>
                 <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Band qilinmoqda...
+                Saqlanmoqda...
               </>
             ) : (
-              'Band qilish'
+              'Saqlash'
             )}
           </button>
         </div>
       </div>
 
       {/* Time Slot Bottom Sheet */}
-      {showTimeSheet && selectedPitch && selectedDate && (
+      {showTimeSheet && pitch && selectedDate && (
         <TimeSlotSheet
-          pitch={selectedPitch}
+          pitch={pitch}
           date={selectedDate}
           onSelectSlot={(slot) => {
             setSelectedTimeSlot(slot);
             setShowTimeSheet(false);
           }}
           onClose={() => setShowTimeSheet(false)}
+        />
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
         />
       )}
     </div>

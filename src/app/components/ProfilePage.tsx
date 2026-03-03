@@ -32,7 +32,14 @@ export default function ProfilePage() {
   return (
     <div className="pb-24 bg-zinc-950 min-h-screen text-white">
       <div className="px-4 pt-6 pb-4">
-        <h1 className="text-2xl font-bold mb-1">Profil</h1>
+        <div className="flex items-center gap-3 mb-1">
+          <img 
+            src="/bronlogo.png" 
+            alt="Bron Logo" 
+            className="h-10 w-auto"
+          />
+          <h1 className="text-2xl font-bold">Profil</h1>
+        </div>
         <p className="text-zinc-400 text-sm">Hisob sozlamalari</p>
       </div>
 

@@ -6,10 +6,11 @@ import { format } from 'date-fns';
 interface Booking {
   id: string;
   pitch_id: string;
-  customer_name: string;
-  customer_phone: string;
+  full_name: string;
+  phone: string;
   start_time: string;
   end_time: string;
+  booking_date?: string;
   status: string;
   created_at: string;
   pitches: {
@@ -47,6 +48,11 @@ export default function BookingsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const calculateBookingDuration = (startTime: string, endTime: string) => {
+    const duration = (new Date(endTime).getTime() - new Date(startTime).getTime()) / (1000 * 60 * 60);
+    return duration;
   };
 
   const filteredBookings = bookings.filter((booking) => {
@@ -88,7 +94,14 @@ export default function BookingsPage() {
     <div className="pb-24 bg-zinc-950 min-h-screen">
       {/* Header */}
       <div className="px-4 pt-6 pb-4">
-        <h1 className="text-2xl font-bold text-white mb-4">Barcha bronlar</h1>
+        <div className="flex items-center gap-3 mb-4">
+          <img 
+            src="/bronlogo.png" 
+            alt="Bron Logo" 
+            className="h-10 w-auto"
+          />
+          <h1 className="text-2xl font-bold text-white">Barcha bronlar</h1>
+        </div>
 
         {/* Filter Chips */}
         <div className="flex gap-2 overflow-x-auto pb-2">
@@ -152,11 +165,11 @@ export default function BookingsPage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <User className="w-4 h-4 text-zinc-400" />
-                    <p className="text-white font-medium">{booking.customer_name}</p>
+                    <p className="text-white font-medium">{booking.full_name}</p>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-zinc-400">
                     <Phone className="w-3.5 h-3.5" />
-                    <span>{booking.customer_phone}</span>
+                    <span>{booking.phone}</span>
                   </div>
                 </div>
                 {getStatusBadge(booking.status)}
@@ -174,6 +187,7 @@ export default function BookingsPage() {
                 <span>
                   {format(new Date(booking.start_time), 'dd MMM, HH:mm')} -{' '}
                   {format(new Date(booking.end_time), 'HH:mm')}
+                  {' '}({calculateBookingDuration(booking.start_time, booking.end_time)} soat)
                 </span>
               </div>
             </div>

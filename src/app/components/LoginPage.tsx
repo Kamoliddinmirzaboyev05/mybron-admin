@@ -14,10 +14,18 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
-    const { error } = await signIn(email, password);
-    
-    if (error) {
-      setError(error.message);
+    try {
+      const { error } = await signIn(email, password);
+      
+      if (error) {
+        setError(error.message || 'Login xatosi yuz berdi');
+        setLoading(false);
+      } else {
+        // Successful login - redirect to dashboard
+        window.location.href = '/';
+      }
+    } catch (err) {
+      setError('Tizimga kirishda xatolik yuz berdi');
       setLoading(false);
     }
   };
@@ -26,8 +34,12 @@ export default function LoginPage() {
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 mb-4">
-            <LogIn className="w-8 h-8 text-white" />
+          <div className="flex justify-center mb-4">
+            <img 
+              src="/bronlogo.png" 
+              alt="Bron Logo" 
+              className="h-20 w-auto"
+            />
           </div>
           <h1 className="text-2xl font-bold text-white mb-2">Admin Panel</h1>
           <p className="text-zinc-400">Maydon boshqaruv tizimi</p>
@@ -86,9 +98,12 @@ export default function LoginPage() {
 
         <p className="text-center text-zinc-400 text-sm mt-6">
           Hisobingiz yo'qmi?{' '}
-          <a href="/register" className="text-blue-500 hover:text-blue-400">
+          <button 
+            onClick={() => window.location.href = '/register'} 
+            className="text-blue-500 hover:text-blue-400 underline"
+          >
             Ro'yxatdan o'tish
-          </a>
+          </button>
         </p>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutDashboard, Calendar, MapPin, User } from 'lucide-react';
+import { LayoutDashboard, Calendar, Settings, User } from 'lucide-react';
 
 interface BottomNavProps {
   activeTab: string;
@@ -10,7 +10,7 @@ export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'bookings', label: 'Bronlar', icon: Calendar },
-    { id: 'pitch', label: 'Maydon', icon: MapPin },
+    { id: 'settings', label: 'Sozlamalar', icon: Settings },
     { id: 'profile', label: 'Profil', icon: User },
   ];
 

@@ -6,8 +6,8 @@ import { format, setHours, setMinutes, startOfDay, endOfDay } from 'date-fns';
 interface Pitch {
   id: string;
   name: string;
-  working_hours_start: string;
-  working_hours_end: string;
+  start_time: string;
+  end_time: string;
 }
 
 interface TimeSlotSheetProps {
@@ -26,6 +26,8 @@ interface TimeSlot {
 export default function TimeSlotSheet({ pitch, date, onSelectSlot, onClose }: TimeSlotSheetProps) {
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedStartIndex, setSelectedStartIndex] = useState<number | null>(null);
+  const [selectedEndIndex, setSelectedEndIndex] = useState<number | null>(null);
 
   useEffect(() => {
     generateTimeSlots();
@@ -35,20 +37,18 @@ export default function TimeSlotSheet({ pitch, date, onSelectSlot, onClose }: Ti
     setLoading(true);
     try {
       // Parse working hours
-      const [startHour, startMinute] = pitch.working_hours_start.split(':').map(Number);
-      const [endHour, endMinute] = pitch.working_hours_end.split(':').map(Number);
+      const [startHour, startMinute] = pitch.start_time.split(':').map(Number);
+      const [endHour, endMinute] = pitch.end_time.split(':').map(Number);
 
       // Get existing bookings for this pitch and date
-      const startOfSelectedDay = startOfDay(date).toISOString();
-      const endOfSelectedDay = endOfDay(date).toISOString();
+      const selectedDate = format(date, 'yyyy-MM-dd'); // Format: '2026-03-03'
 
       const { data: bookings, error } = await supabase
         .from('bookings')
         .select('start_time, end_time')
         .eq('pitch_id', pitch.id)
-        .eq('status', 'confirmed')
-        .gte('start_time', startOfSelectedDay)
-        .lte('start_time', endOfSelectedDay);
+        .eq('booking_date', selectedDate)
+        .in('status', ['confirmed', 'manual']);
 
       if (error) throw error;
 
@@ -60,15 +60,11 @@ export default function TimeSlotSheet({ pitch, date, onSelectSlot, onClose }: Ti
         const slotStart = setMinutes(setHours(date, currentHour), 0);
         const slotEnd = setMinutes(setHours(date, currentHour + 1), 0);
 
-        // Check if slot overlaps with any existing booking
+        // Advanced overlap validation: N_Start < E_End AND N_End > E_Start
         const isBooked = bookings?.some((booking) => {
           const bookingStart = new Date(booking.start_time);
           const bookingEnd = new Date(booking.end_time);
-          return (
-            (slotStart >= bookingStart && slotStart < bookingEnd) ||
-            (slotEnd > bookingStart && slotEnd <= bookingEnd) ||
-            (slotStart <= bookingStart && slotEnd >= bookingEnd)
-          );
+          return slotStart < bookingEnd && slotEnd > bookingStart;
         });
 
         slots.push({
@@ -88,14 +84,67 @@ export default function TimeSlotSheet({ pitch, date, onSelectSlot, onClose }: Ti
     }
   };
 
+  const handleSlotClick = (index: number) => {
+    if (!timeSlots[index].available) return;
+
+    if (selectedStartIndex === null) {
+      // First click - select start
+      setSelectedStartIndex(index);
+      setSelectedEndIndex(index);
+    } else if (selectedStartIndex === index) {
+      // Click on same slot - deselect
+      setSelectedStartIndex(null);
+      setSelectedEndIndex(null);
+    } else if (index > selectedStartIndex) {
+      // Extend selection forward
+      // Check if all slots in range are available
+      const allAvailable = timeSlots
+        .slice(selectedStartIndex, index + 1)
+        .every(slot => slot.available);
+      
+      if (allAvailable) {
+        setSelectedEndIndex(index);
+      }
+    } else {
+      // Click before start - reset and start new selection
+      setSelectedStartIndex(index);
+      setSelectedEndIndex(index);
+    }
+  };
+
+  const handleConfirm = () => {
+    if (selectedStartIndex !== null && selectedEndIndex !== null) {
+      const start = timeSlots[selectedStartIndex].start;
+      const end = timeSlots[selectedEndIndex].end;
+      onSelectSlot({ start, end });
+    }
+  };
+
+  const isSlotSelected = (index: number) => {
+    if (selectedStartIndex === null || selectedEndIndex === null) return false;
+    return index >= selectedStartIndex && index <= selectedEndIndex;
+  };
+
+  const getSelectedDuration = () => {
+    if (selectedStartIndex === null || selectedEndIndex === null) return 0;
+    return selectedEndIndex - selectedStartIndex + 1;
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center">
-      <div className="bg-zinc-900 w-full max-h-[70vh] rounded-t-2xl overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/80 z-[70] flex items-end justify-center">
+      <div className="bg-zinc-900 w-full max-h-[75vh] rounded-t-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="sticky top-0 bg-zinc-900 border-b border-zinc-800 px-4 py-4 flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-white">Vaqtni tanlang</h3>
-            <p className="text-sm text-zinc-400">{format(date, 'dd MMMM, EEEE')}</p>
+            <p className="text-sm text-zinc-400">
+              {format(date, 'dd MMMM, EEEE')}
+              {getSelectedDuration() > 0 && (
+                <span className="ml-2 text-blue-400">
+                  • {getSelectedDuration()} soat tanlandi
+                </span>
+              )}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -106,32 +155,35 @@ export default function TimeSlotSheet({ pitch, date, onSelectSlot, onClose }: Ti
         </div>
 
         {/* Time Slots */}
-        <div className="overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
-              {timeSlots.map((slot, index) => (
-                <button
-                  key={index}
-                  onClick={() => {
-                    if (slot.available) {
-                      onSelectSlot(slot);
-                    }
-                  }}
-                  disabled={!slot.available}
-                  className={`py-3 px-4 rounded-lg font-medium transition-colors ${
-                    slot.available
-                      ? 'bg-zinc-800 text-white hover:bg-blue-600 border border-zinc-700'
-                      : 'bg-zinc-900 text-zinc-600 border border-zinc-800 cursor-not-allowed'
-                  }`}
-                >
-                  {format(slot.start, 'HH:mm')} - {format(slot.end, 'HH:mm')}
-                </button>
-              ))}
-            </div>
+            <>
+              <div className="mb-3 text-sm text-zinc-400 text-center">
+                Bir yoki bir nechta vaqtni tanlang
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {timeSlots.map((slot, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleSlotClick(index)}
+                    disabled={!slot.available}
+                    className={`py-3 px-4 rounded-lg font-medium transition-all ${
+                      isSlotSelected(index)
+                        ? 'bg-blue-600 text-white border-2 border-blue-400 scale-95'
+                        : slot.available
+                        ? 'bg-zinc-800 text-white hover:bg-zinc-700 border border-zinc-700'
+                        : 'bg-zinc-900 text-zinc-600 border border-zinc-800 cursor-not-allowed'
+                    }`}
+                  >
+                    {format(slot.start, 'HH:mm')} - {format(slot.end, 'HH:mm')}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
 
           {!loading && timeSlots.length === 0 && (
@@ -140,6 +192,18 @@ export default function TimeSlotSheet({ pitch, date, onSelectSlot, onClose }: Ti
             </div>
           )}
         </div>
+
+        {/* Confirm Button */}
+        {selectedStartIndex !== null && selectedEndIndex !== null && (
+          <div className="flex-shrink-0 bg-zinc-900 border-t border-zinc-800 p-4">
+            <button
+              onClick={handleConfirm}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 px-4 rounded-lg transition-colors"
+            >
+              Tasdiqlash • {format(timeSlots[selectedStartIndex].start, 'HH:mm')} - {format(timeSlots[selectedEndIndex].end, 'HH:mm')}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

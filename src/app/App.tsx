@@ -4,7 +4,7 @@ import LoginPage from './components/LoginPage';
 import RegisterPage from './components/RegisterPage';
 import DashboardPage from './components/DashboardPage';
 import BookingsPage from './components/BookingsPage';
-import PitchPage from './components/PitchPage';
+import SettingsPage from './components/SettingsPage';
 import ProfilePage from './components/ProfilePage';
 import BottomNav from './components/BottomNav';
 import { Loader2 } from 'lucide-react';
@@ -58,7 +58,7 @@ function MainApp() {
     <div className="bg-zinc-950 min-h-screen">
       {activeTab === 'dashboard' && <DashboardPage />}
       {activeTab === 'bookings' && <BookingsPage />}
-      {activeTab === 'pitch' && <PitchPage />}
+      {activeTab === 'settings' && <SettingsPage />}
       {activeTab === 'profile' && <ProfilePage />}
       <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />
     </div>
