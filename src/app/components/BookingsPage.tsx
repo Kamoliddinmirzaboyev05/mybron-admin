@@ -93,6 +93,12 @@ export default function BookingsPage() {
     const uzbekistanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tashkent' }));
     const todayDateUZ = format(uzbekistanTime, 'yyyy-MM-dd');
     
+    console.log('🔍 FILTERING BOOKINGS:');
+    console.log('Today\'s date (UZ):', todayDateUZ);
+    console.log('Booking date:', booking.booking_date);
+    console.log('Booking status:', booking.status);
+    console.log('Date comparison:', booking.booking_date, '>=', todayDateUZ, '=', booking.booking_date >= todayDateUZ);
+    
     // Filter out past bookings (only show today and future)
     if (booking.booking_date < todayDateUZ) return false;
     
@@ -101,7 +107,7 @@ export default function BookingsPage() {
     }
     
     if (filter === 'confirmed') {
-      return booking.status === 'confirmed';
+      return booking.status === 'confirmed' || booking.status === 'manual';
     }
     
     if (filter === 'rejected') {
@@ -130,11 +136,12 @@ export default function BookingsPage() {
     const now = new Date();
     const uzbekistanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tashkent' }));
     const todayDateUZ = format(uzbekistanTime, 'yyyy-MM-dd');
-    const isCompleted = bookingDate < todayDateUZ && status === 'confirmed';
+    const isCompleted = bookingDate < todayDateUZ && (status === 'confirmed' || status === 'manual');
     
     const styles = {
       pending: 'bg-yellow-950 text-yellow-400 border-yellow-800',
       confirmed: 'bg-green-950 text-green-400 border-green-800',
+      manual: 'bg-blue-950 text-blue-400 border-blue-800',
       rejected: 'bg-red-950 text-red-400 border-red-800',
       cancelled: 'bg-red-950 text-red-400 border-red-800',
       completed: 'bg-purple-950 text-purple-400 border-purple-800',
@@ -143,6 +150,7 @@ export default function BookingsPage() {
     const labels = {
       pending: 'Kutilmoqda',
       confirmed: 'Tasdiqlangan',
+      manual: 'Qo\'lda',
       rejected: 'Rad etilgan',
       cancelled: 'Rad etilgan',
       completed: 'Tugallangan',
@@ -212,7 +220,7 @@ export default function BookingsPage() {
               const now = new Date();
               const uzbekistanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tashkent' }));
               const todayDateUZ = format(uzbekistanTime, 'yyyy-MM-dd');
-              return b.status === 'confirmed' && b.booking_date >= todayDateUZ;
+              return (b.status === 'confirmed' || b.status === 'manual') && b.booking_date >= todayDateUZ;
             }).length})
           </button>
           <button

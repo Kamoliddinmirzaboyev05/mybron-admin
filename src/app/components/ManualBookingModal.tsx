@@ -175,8 +175,16 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
         end_time: formatTimeOnly(selectedTimeSlot.end),     // TIME format: '20:00:00'
         booking_date: format(selectedDate, 'yyyy-MM-dd'),   // DATE format: '2026-03-03'
         total_price: totalPrice,
-        status: 'confirmed',
+        status: 'manual', // Changed from 'confirmed' to 'manual' to distinguish manual bookings
       };
+
+      console.log('📝 CREATING MANUAL BOOKING:');
+      console.log('Selected date object:', selectedDate);
+      console.log('Formatted booking_date:', bookingData.booking_date);
+      console.log('Start time:', bookingData.start_time);
+      console.log('End time:', bookingData.end_time);
+      console.log('Total price:', bookingData.total_price);
+      console.log('Full booking data:', bookingData);
 
       // Insert booking - database trigger will check for overlaps
       const { error } = await supabase.from('bookings').insert(bookingData);

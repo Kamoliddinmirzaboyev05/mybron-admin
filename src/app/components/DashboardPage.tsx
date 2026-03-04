@@ -291,12 +291,16 @@ export default function DashboardPage() {
 
   const fetchBookings = async () => {
     try {
-      // Get local timezone date (Uzbekistan Time)
-      const today = new Date();
-      const todayDate = format(today, 'yyyy-MM-dd');
+      // Get Uzbekistan timezone date
+      const now = new Date();
+      const uzbekistanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tashkent' }));
+      const todayDate = format(uzbekistanTime, 'yyyy-MM-dd');
       
-      console.log('📅 Fetching bookings for local date:', todayDate);
-      console.log('🌍 Local timezone offset:', today.getTimezoneOffset() / -60, 'hours from UTC');
+      console.log('📅 FETCHING BOOKINGS:');
+      console.log('Current time (local):', now.toISOString());
+      console.log('Uzbekistan time:', uzbekistanTime.toISOString());
+      console.log('Today\'s date (UZ):', todayDate);
+      console.log('Expected date for stats: 2026-03-04');
 
       // Fetch ALL pending requests (regardless of date)
       const { data: pendingData, error: pendingError } = await supabase
