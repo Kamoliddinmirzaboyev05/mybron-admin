@@ -52,11 +52,31 @@ export default function TimeSlotSheet({ pitch, date, onSelectSlot, onClose }: Ti
 
       if (error) throw error;
 
+      // Get current Uzbekistan time
+      const now = new Date();
+      const uzbekistanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tashkent' }));
+      const currentHourUZ = uzbekistanTime.getHours();
+      const todayDateUZ = format(uzbekistanTime, 'yyyy-MM-dd');
+      const isToday = selectedDate === todayDateUZ;
+
+      console.log('⏰ TIME SLOT GENERATION:');
+      console.log('Selected date:', selectedDate);
+      console.log('Today (Uzbekistan):', todayDateUZ);
+      console.log('Current hour (Uzbekistan):', currentHourUZ);
+      console.log('Is today:', isToday);
+
       // Generate 1-hour time slots
       const slots: TimeSlot[] = [];
       let currentHour = startHour;
 
       while (currentHour < endHour) {
+        // Skip past time slots if booking for today
+        if (isToday && currentHour <= currentHourUZ) {
+          console.log(`⏭️ Skipping past slot: ${currentHour}:00 (current hour: ${currentHourUZ})`);
+          currentHour++;
+          continue;
+        }
+
         const slotStart = setMinutes(setHours(date, currentHour), 0);
         const slotEnd = setMinutes(setHours(date, currentHour + 1), 0);
 
@@ -83,6 +103,7 @@ export default function TimeSlotSheet({ pitch, date, onSelectSlot, onClose }: Ti
         currentHour++;
       }
 
+      console.log('✅ Generated slots:', slots.length);
       setTimeSlots(slots);
     } catch (error) {
       console.error('Error generating time slots:', error);

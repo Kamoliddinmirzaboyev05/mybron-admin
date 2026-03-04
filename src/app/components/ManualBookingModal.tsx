@@ -5,6 +5,7 @@ import { X, ChevronDown, Loader2 } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import TimeSlotSheet from './TimeSlotSheet';
 import Toast from './Toast';
+import { toast as hotToast } from 'react-hot-toast';
 
 interface Pitch {
   id: string;
@@ -91,6 +92,54 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
     return duration * pitch.price_per_hour;
   };
 
+  // Format phone number as user types
+  const formatPhoneNumber = (value: string) => {
+    // Remove all non-digit characters
+    const digits = value.replace(/\D/g, '');
+    
+    // If starts with 998, keep it; otherwise add it
+    let formatted = '';
+    
+    if (digits.length === 0) {
+      return '';
+    }
+    
+    // Always start with +998
+    formatted = '+998';
+    
+    // Get the remaining digits after 998
+    let remaining = digits;
+    if (digits.startsWith('998')) {
+      remaining = digits.slice(3);
+    } else if (digits.startsWith('998')) {
+      remaining = digits.slice(3);
+    } else {
+      remaining = digits;
+    }
+    
+    // Format: +998 XX XXX XX XX
+    if (remaining.length > 0) {
+      formatted += ' ' + remaining.slice(0, 2);
+    }
+    if (remaining.length > 2) {
+      formatted += ' ' + remaining.slice(2, 5);
+    }
+    if (remaining.length > 5) {
+      formatted += ' ' + remaining.slice(5, 7);
+    }
+    if (remaining.length > 7) {
+      formatted += ' ' + remaining.slice(7, 9);
+    }
+    
+    return formatted;
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target.value;
+    const formatted = formatPhoneNumber(input);
+    setCustomerPhone(formatted);
+  };
+
   const handleBook = async () => {
     // Validate all required fields
     if (!pitch || !selectedDate || !selectedTimeSlot || !customerName.trim() || !customerPhone.trim()) {
@@ -99,9 +148,9 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
     }
 
     // Validate phone number format (basic validation)
-    const phoneRegex = /^\+?998\s?\d{2}\s?\d{3}\s?\d{2}\s?\d{2}$/;
-    if (!phoneRegex.test(customerPhone.replace(/\s/g, ''))) {
-      setToast({ message: 'Telefon raqami noto\'g\'ri formatda', type: 'error' });
+    const phoneDigits = customerPhone.replace(/\D/g, '');
+    if (phoneDigits.length !== 12 || !phoneDigits.startsWith('998')) {
+      setToast({ message: 'Telefon raqami to\'liq emas (12 raqam kerak)', type: 'error' });
       return;
     }
 
@@ -149,6 +198,9 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
 
       // Success - show toast and close modal
       setToast({ message: 'Bron muvaffaqiyatli saqlandi!', type: 'success' });
+      hotToast.success('Muvaffaqiyatli band qilindi!', {
+        icon: '🎉',
+      });
       
       // Wait a bit for toast to show, then close and refresh
       setTimeout(() => {
@@ -278,10 +330,14 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
               <input
                 type="tel"
                 value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
+                onChange={handlePhoneChange}
+                maxLength={17}
                 className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
                 placeholder="+998 90 123 45 67"
               />
+              <p className="text-xs text-zinc-500 mt-1">
+                Format: +998 XX XXX XX XX
+              </p>
             </div>
           </div>
         </div>

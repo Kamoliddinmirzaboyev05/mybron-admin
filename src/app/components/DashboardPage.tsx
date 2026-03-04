@@ -3,18 +3,20 @@ import { supabase } from '../../lib/supabase';
 import { Plus, Loader2, Calendar, Clock, Phone, MapPin, Check, X, Bell } from 'lucide-react';
 import { format } from 'date-fns';
 import ManualBookingModal from './ManualBookingModal';
+import toast from 'react-hot-toast';
 
 interface Booking {
   id: string;
   pitch_id: string;
+  user_id: string | null;
   full_name: string;
   phone: string;
   start_time: string;
   end_time: string;
-  booking_date?: string;
-  status: string;
+  booking_date: string; // DATE format: 'YYYY-MM-DD'
+  status: 'pending' | 'confirmed' | 'manual' | 'rejected' | 'cancelled';
   created_at: string;
-  total_price?: number;
+  total_price: number;
   pitches: {
     name: string;
     price_per_hour: number;
@@ -28,6 +30,7 @@ export default function DashboardPage() {
   const [todayRevenue, setTodayRevenue] = useState(0);
   const [hoursBookedToday, setHoursBookedToday] = useState(0);
   const [showNewRequestBanner, setShowNewRequestBanner] = useState(false);
+  const [updatedBookingId, setUpdatedBookingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const notificationPermissionRef = useRef<NotificationPermission>('default');
 
@@ -128,20 +131,30 @@ export default function DashboardPage() {
             console.log('📅 Booking date:', data.booking_date);
             console.log('🔖 Booking status:', data.status);
             
-            // Add new booking to the list (no date filtering for pending requests)
-            console.log('✅ Adding booking to list');
-            setBookings(prev => {
-              console.log('📝 Previous bookings count:', prev.length);
-              const updated = [data, ...prev];
+            // Prepend new booking to the list (Task 2: Handle New Inserts)
+            console.log('✅ Prepending booking to list');
+            setBookings(current => {
+              console.log('📝 Previous bookings count:', current.length);
+              const updated = [data, ...current];
               console.log('📝 Updated bookings count:', updated.length);
               return updated;
             });
+            
+            // Recalculate stats if it's a confirmed booking for today
+            if ((data.status === 'confirmed' || data.status === 'manual') && data.booking_date === todayDate) {
+              console.log('� Recalculating stats for new confirmed booking');
+              setTimeout(() => recalculateStats(), 100);
+            }
             
             // Play notification sound and show alert if it's a pending booking
             if (data.status === 'pending') {
               console.log('🔔 Playing notification sound and showing alert');
               playNotificationSound();
               showNotification(data);
+              toast.success('Yangi bron so\'rovi keldi!', {
+                icon: '🔔',
+                duration: 4000,
+              });
             }
           }
         }
@@ -173,22 +186,36 @@ export default function DashboardPage() {
 
           if (data) {
             console.log('✏️ Updating booking in list:', data.id);
-            setBookings(prev => {
-              const index = prev.findIndex(b => b.id === data.id);
+            console.log('� New status:', data.status);
+            
+            // Task 1: Unified State Sync - Update booking in state
+            setBookings(current => {
+              const index = current.findIndex(b => b.id === data.id);
               console.log('📍 Found booking at index:', index);
+              
               if (index !== -1) {
                 // Update existing booking
-                const updated = [...prev];
-                updated[index] = data;
+                const updated = current.map(b => 
+                  b.id === data.id ? data : b
+                );
                 console.log('✅ Booking updated in list');
                 return updated;
+              } else {
+                // Booking not in list, add it
+                console.log('➕ Booking not found, adding to list');
+                return [data, ...current];
               }
-              console.log('⚠️ Booking not found in current list');
-              return prev;
             });
             
-            // Recalculate statistics
-            recalculateStats();
+            // Task 4: Visual Feedback - Highlight the updated booking
+            setUpdatedBookingId(data.id);
+            setTimeout(() => setUpdatedBookingId(null), 2000);
+            
+            // Task 3: Automatic Stats Re-calculation
+            if (data.status === 'confirmed' || data.status === 'manual') {
+              console.log('📊 Recalculating stats after status change to confirmed');
+              setTimeout(() => recalculateStats(), 100);
+            }
           }
         }
       )
@@ -271,7 +298,7 @@ export default function DashboardPage() {
       console.log('📅 Fetching bookings for local date:', todayDate);
       console.log('🌍 Local timezone offset:', today.getTimezoneOffset() / -60, 'hours from UTC');
 
-      // Fetch ALL pending requests (regardless of date) and today's confirmed bookings
+      // Fetch ALL pending requests (regardless of date)
       const { data: pendingData, error: pendingError } = await supabase
         .from('bookings')
         .select(`
@@ -286,8 +313,8 @@ export default function DashboardPage() {
 
       if (pendingError) throw pendingError;
 
-      // Fetch today's confirmed/manual bookings
-      const { data: todayData, error: todayError } = await supabase
+      // Fetch confirmed/manual bookings for today AND future dates
+      const { data: upcomingData, error: upcomingError } = await supabase
         .from('bookings')
         .select(`
           *,
@@ -296,37 +323,54 @@ export default function DashboardPage() {
             price_per_hour
           )
         `)
-        .eq('booking_date', todayDate)
+        .gte('booking_date', todayDate)
         .in('status', ['confirmed', 'manual'])
+        .order('booking_date', { ascending: true })
         .order('start_time', { ascending: true });
 
-      if (todayError) throw todayError;
+      if (upcomingError) throw upcomingError;
 
       // Combine and deduplicate bookings
-      const allBookings = [...(pendingData || []), ...(todayData || [])];
+      const allBookings = [...(pendingData || []), ...(upcomingData || [])];
       const uniqueBookings = Array.from(
         new Map(allBookings.map(b => [b.id, b])).values()
       );
 
       setBookings(uniqueBookings);
       
-      // Calculate statistics for today only
+      console.log('📦 FETCHED BOOKINGS:');
+      console.log('Pending count:', pendingData?.length || 0);
+      console.log('Upcoming count:', upcomingData?.length || 0);
+      console.log('Total unique bookings:', uniqueBookings.length);
+      console.log('Pending data:', pendingData);
+      console.log('Upcoming data:', upcomingData);
+      console.log('All unique bookings:', uniqueBookings);
+      
+      // Log user_id distribution
+      const manualBookings = uniqueBookings.filter(b => b.user_id === null);
+      const userBookings = uniqueBookings.filter(b => b.user_id !== null);
+      console.log('📊 BOOKING DISTRIBUTION:');
+      console.log('Manual bookings (user_id = null):', manualBookings.length);
+      console.log('User bookings (user_id present):', userBookings.length);
+      console.log('Manual bookings data:', manualBookings);
+      console.log('User bookings data:', userBookings);
+      
+      // Calculate statistics for today only - confirmed AND manual bookings
       const todayBookings = uniqueBookings.filter(
         (b) => (b.status === 'confirmed' || b.status === 'manual') && b.booking_date === todayDate
       );
       
-      // Calculate total revenue from total_price or fallback to price_per_hour
+      console.log('💰 FILTERING TODAY\'S BOOKINGS:');
+      console.log('Today\'s date for comparison:', todayDate);
+      console.log('All unique bookings:', uniqueBookings);
+      console.log('Bookings with today\'s date:', uniqueBookings.filter(b => b.booking_date === todayDate));
+      console.log('Confirmed/Manual bookings:', uniqueBookings.filter(b => b.status === 'confirmed' || b.status === 'manual'));
+      console.log('Final today\'s bookings:', todayBookings);
+      
+      // Calculate total revenue from total_price
       const revenue = todayBookings.reduce((sum, booking) => {
-        if (booking.total_price) {
-          return sum + booking.total_price;
-        }
-        // Fallback: calculate from duration using TIME strings
-        const [startHour, startMin] = booking.start_time.split(':').map(Number);
-        const [endHour, endMin] = booking.end_time.split(':').map(Number);
-        const startMinutes = startHour * 60 + startMin;
-        const endMinutes = endHour * 60 + endMin;
-        const duration = (endMinutes - startMinutes) / 60;
-        return sum + (duration * (booking.pitches?.price_per_hour || 0));
+        console.log(`Adding booking ${booking.id}: ${booking.total_price}`);
+        return sum + (booking.total_price || 0);
       }, 0);
       
       // Calculate total hours booked
@@ -344,6 +388,22 @@ export default function DashboardPage() {
       
       setTodayRevenue(revenue);
       setHoursBookedToday(hours);
+      
+      console.log('💰 STATS CALCULATED:');
+      console.log('Today\'s date:', todayDate);
+      console.log('Today\'s bookings count:', todayBookings.length);
+      console.log('Today\'s revenue:', revenue);
+      console.log('Today\'s hours:', hours);
+      console.log('Today\'s bookings:', todayBookings);
+      
+      // Log today's bookings by user_id
+      const todayManual = todayBookings.filter(b => b.user_id === null);
+      const todayUser = todayBookings.filter(b => b.user_id !== null);
+      console.log('📊 TODAY\'S BOOKING DISTRIBUTION:');
+      console.log('Manual bookings (user_id = null):', todayManual.length);
+      console.log('User bookings (user_id present):', todayUser.length);
+      console.log('Manual bookings:', todayManual);
+      console.log('User bookings:', todayUser);
     } catch (error) {
       console.error('Error fetching bookings:', error);
     } finally {
@@ -351,8 +411,26 @@ export default function DashboardPage() {
     }
   };
 
-  const handleStatusUpdate = async (id: string, newStatus: string) => {
+  const handleStatusUpdate = async (id: string, newStatus: 'confirmed' | 'rejected' | 'cancelled') => {
     try {
+      // Validate booking ID
+      console.log('UPDATE_ATTEMPT:', { bookingId: id, newStatus, idType: typeof id });
+      
+      if (!id || typeof id !== 'string') {
+        console.error('INVALID_BOOKING_ID:', id);
+        alert('Noto\'g\'ri bron ID');
+        return;
+      }
+
+      // Check auth session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        console.error('SESSION_ERROR:', sessionError);
+        alert('Sessiya tugagan. Iltimos qaytadan kiring.');
+        return;
+      }
+      console.log('SESSION_VALID:', { userId: session.user.id });
+
       // Optimistic update
       setBookings(prev => {
         const index = prev.findIndex(b => b.id === id);
@@ -364,13 +442,43 @@ export default function DashboardPage() {
         return prev;
       });
 
-      // Update in database
-      const { error } = await supabase
+      // Update in database with .select() to return updated data
+      const { data, error } = await supabase
         .from('bookings')
         .update({ status: newStatus })
-        .eq('id', id);
+        .eq('id', id)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('SUPABASE_UPDATE_ERROR:', error);
+        alert('Bazada xatolik: ' + error.message);
+        toast.error('Bazada xatolik: ' + error.message);
+        throw error;
+      }
+      
+      if (!data || data.length === 0) {
+        console.error('NO_DATA_RETURNED:', { bookingId: id, data });
+        alert('Bron topilmadi yoki yangilanmadi');
+        toast.error('Bron topilmadi yoki yangilanmadi');
+        throw new Error('No data returned from update');
+      }
+
+      console.log('UPDATE_SUCCESSFUL:', data);
+      
+      // Show success toast based on status
+      if (newStatus === 'confirmed') {
+        toast.success('Bron muvaffaqiyatli tasdiqlandi!', {
+          icon: '✅',
+        });
+      } else if (newStatus === 'rejected') {
+        toast.error('Bron rad etildi', {
+          icon: '❌',
+        });
+      } else if (newStatus === 'cancelled') {
+        toast('Bron bekor qilindi', {
+          icon: '🚫',
+        });
+      }
       
       // Recalculate stats immediately if confirmed
       if (newStatus === 'confirmed') {
@@ -413,10 +521,54 @@ export default function DashboardPage() {
     return durationHours;
   };
 
-  const upcomingBookings = bookings.filter(
-    (b) => b.status === 'confirmed' || b.status === 'manual'
-  );
+  // Filter upcoming bookings: show all confirmed bookings for today and future dates
+  const now = new Date();
+  const uzbekistanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tashkent' }));
+  const todayDate = format(uzbekistanTime, 'yyyy-MM-dd');
+  
+  const upcomingBookings = bookings
+    .filter((b) => {
+      // Only confirmed or manual bookings
+      if (b.status !== 'confirmed' && b.status !== 'manual') return false;
+      
+      // Show all bookings for today (regardless of time - persist until end of day)
+      if (b.booking_date === todayDate) return true;
+      
+      // Show all future bookings
+      if (b.booking_date && b.booking_date > todayDate) return true;
+      
+      // Hide past bookings
+      return false;
+    })
+    .sort((a, b) => {
+      // Sort by date first
+      const dateCompare = (a.booking_date || '').localeCompare(b.booking_date || '');
+      if (dateCompare !== 0) return dateCompare;
+      
+      // Then by start time (earliest first)
+      return (a.start_time || '').localeCompare(b.start_time || '');
+    });
+  
   const pendingBookings = bookings.filter((b) => b.status === 'pending');
+
+  // Debug: Log bookings data
+  console.log('📊 BOOKINGS DEBUG:');
+  console.log('Current date (Uzbekistan):', todayDate);
+  console.log('Total bookings:', bookings.length);
+  console.log('Pending bookings:', pendingBookings.length);
+  console.log('Upcoming bookings (today + future):', upcomingBookings.length);
+  console.log('All bookings data:', bookings);
+  console.log('Pending bookings data:', pendingBookings);
+  console.log('Upcoming bookings data:', upcomingBookings);
+  
+  // Log upcoming bookings by user_id
+  const upcomingManual = upcomingBookings.filter(b => b.user_id === null);
+  const upcomingUser = upcomingBookings.filter(b => b.user_id !== null);
+  console.log('📊 UPCOMING BOOKING DISTRIBUTION:');
+  console.log('Manual bookings (user_id = null):', upcomingManual.length);
+  console.log('User bookings (user_id present):', upcomingUser.length);
+  console.log('Manual bookings:', upcomingManual);
+  console.log('User bookings:', upcomingUser);
 
   if (loading) {
     return (
@@ -478,7 +630,9 @@ export default function DashboardPage() {
             {pendingBookings.map((booking) => (
               <div
                 key={booking.id}
-                className="bg-zinc-900 border border-zinc-800 rounded-xl p-4"
+                className={`bg-zinc-900 border border-zinc-800 rounded-xl p-4 transition-all duration-300 ${
+                  updatedBookingId === booking.id ? 'animate-pulse ring-2 ring-blue-500 shadow-lg shadow-blue-500/50' : ''
+                }`}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div>
@@ -494,6 +648,10 @@ export default function DashboardPage() {
                 </div>
                 
                 <div className="flex items-center gap-4 text-sm text-zinc-400 mb-3">
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>{booking.booking_date ? format(new Date(booking.booking_date + 'T00:00:00'), 'dd MMM yyyy') : 'Sana ko\'rsatilmagan'}</span>
+                  </div>
                   <div className="flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5" />
                     <span>{booking.pitches?.name}</span>
@@ -536,7 +694,7 @@ export default function DashboardPage() {
           <div className="px-4">
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center">
               <Calendar className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
-              <p className="text-zinc-400">Bugungi kunlik bron yo'q</p>
+              <p className="text-zinc-400">Tasdiqlangan bronlar yo'q</p>
             </div>
           </div>
         ) : (
@@ -544,7 +702,9 @@ export default function DashboardPage() {
             {upcomingBookings.map((booking) => (
               <div
                 key={booking.id}
-                className="bg-zinc-900 border border-zinc-800 rounded-xl p-4"
+                className={`bg-zinc-900 border border-zinc-800 rounded-xl p-4 transition-all duration-300 ${
+                  updatedBookingId === booking.id ? 'animate-pulse ring-2 ring-green-500 shadow-lg shadow-green-500/50' : ''
+                }`}
               >
                 <div className="flex items-start justify-between mb-2">
                   <div>
@@ -560,6 +720,10 @@ export default function DashboardPage() {
                 </div>
                 
                 <div className="flex items-center gap-4 text-sm text-zinc-400 mb-3">
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>{booking.booking_date ? format(new Date(booking.booking_date + 'T00:00:00'), 'dd MMM yyyy') : 'Bugun'}</span>
+                  </div>
                   <div className="flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5" />
                     <span>{booking.pitches?.name}</span>

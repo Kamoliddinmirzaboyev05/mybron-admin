@@ -8,6 +8,7 @@ import SettingsPage from './components/SettingsPage';
 import ProfilePage from './components/ProfilePage';
 import BottomNav from './components/BottomNav';
 import { Loader2 } from 'lucide-react';
+import { Toaster } from 'react-hot-toast';
 
 function Router() {
   const [route, setRoute] = useState(window.location.pathname);
@@ -68,6 +69,29 @@ function MainApp() {
 export default function App() {
   return (
     <AuthProvider>
+      <Toaster
+        position="top-center"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: '#18181b',
+            color: '#fff',
+            border: '1px solid #27272a',
+          },
+          success: {
+            iconTheme: {
+              primary: '#10b981',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#fff',
+            },
+          },
+        }}
+      />
       <Router />
     </AuthProvider>
   );
