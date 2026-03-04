@@ -15,6 +15,7 @@ import {
   DollarSign,
   Wallet
 } from 'lucide-react';
+import { StatCardSkeleton, ProfileCardSkeleton } from './Skeleton';
 
 interface ProfileData {
   total_revenue: number;

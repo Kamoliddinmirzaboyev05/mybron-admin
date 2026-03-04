@@ -20,6 +20,7 @@ import {
   CircleDot
 } from 'lucide-react';
 import Toast from './Toast';
+import { Skeleton } from './Skeleton';
 
 // Predefined amenities list with icons
 const AMENITIES = [
@@ -366,8 +367,54 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-zinc-950">
-        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      <div className="pb-24 bg-zinc-950 min-h-screen">
+        {/* Header Skeleton */}
+        <div className="px-4 pt-6 pb-4">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="h-10 w-10 bg-zinc-800 rounded animate-pulse" />
+            <div className="h-7 w-32 bg-zinc-800 rounded animate-pulse" />
+          </div>
+          <div className="h-4 w-48 bg-zinc-800 rounded animate-pulse" />
+        </div>
+
+        {/* Form Skeleton */}
+        <div className="px-4 space-y-6">
+          {/* Input fields */}
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i}>
+              <Skeleton className="h-4 w-32 mb-2" />
+              <Skeleton className="h-12 w-full" />
+            </div>
+          ))}
+
+          {/* Time pickers */}
+          <div>
+            <Skeleton className="h-4 w-24 mb-2" />
+            <div className="grid grid-cols-2 gap-4">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </div>
+          </div>
+
+          {/* Images section */}
+          <div>
+            <Skeleton className="h-4 w-32 mb-2" />
+            <Skeleton className="h-40 w-full rounded-lg" />
+          </div>
+
+          {/* Amenities grid */}
+          <div>
+            <Skeleton className="h-4 w-32 mb-3" />
+            <div className="grid grid-cols-2 gap-3">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <Skeleton key={i} className="h-16 w-full rounded-lg" />
+              ))}
+            </div>
+          </div>
+
+          {/* Save button */}
+          <Skeleton className="h-14 w-full rounded-lg" />
+        </div>
       </div>
     );
   }

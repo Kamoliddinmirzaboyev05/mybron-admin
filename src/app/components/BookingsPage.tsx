@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Loader2, Clock, MapPin, Phone, User, X } from 'lucide-react';
 import { format } from 'date-fns';
+import { ListItemSkeleton } from './Skeleton';
 
 interface Booking {
   id: string;
@@ -167,8 +168,30 @@ export default function BookingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-zinc-950">
-        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      <div className="pb-24 bg-zinc-950 min-h-screen">
+        {/* Header Skeleton */}
+        <div className="px-4 pt-6 pb-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="h-7 w-40 bg-zinc-800 rounded animate-pulse" />
+            <div className="h-10 w-10 bg-zinc-800 rounded-lg animate-pulse" />
+          </div>
+
+          {/* Tabs Skeleton */}
+          <div className="flex gap-2">
+            <div className="h-10 w-32 bg-zinc-800 rounded-lg animate-pulse" />
+            <div className="h-10 w-36 bg-zinc-800 rounded-lg animate-pulse" />
+            <div className="h-10 w-32 bg-zinc-800 rounded-lg animate-pulse" />
+          </div>
+        </div>
+
+        {/* List Skeleton */}
+        <div className="px-4 space-y-3">
+          <ListItemSkeleton />
+          <ListItemSkeleton />
+          <ListItemSkeleton />
+          <ListItemSkeleton />
+          <ListItemSkeleton />
+        </div>
       </div>
     );
   }

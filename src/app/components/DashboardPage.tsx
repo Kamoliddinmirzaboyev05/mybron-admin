@@ -4,6 +4,7 @@ import { Plus, Loader2, Calendar, Clock, Phone, MapPin, Check, X, Bell } from 'l
 import { format } from 'date-fns';
 import ManualBookingModal from './ManualBookingModal';
 import toast from 'react-hot-toast';
+import { StatCardSkeleton, BookingCardSkeleton } from './Skeleton';
 
 interface Booking {
   id: string;
@@ -576,8 +577,44 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-zinc-950">
-        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      <div className="pb-24 bg-zinc-950 min-h-screen">
+        {/* Header Skeleton */}
+        <div className="px-4 pt-6 pb-4">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-10 w-10 bg-zinc-800 rounded animate-pulse" />
+            <div className="flex-1 space-y-2">
+              <div className="h-7 w-32 bg-zinc-800 rounded animate-pulse" />
+              <div className="h-4 w-40 bg-zinc-800 rounded animate-pulse" />
+            </div>
+          </div>
+        </div>
+
+        {/* Stats Cards Skeleton */}
+        <div className="px-4 mb-6">
+          <div className="grid grid-cols-2 gap-3">
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+          </div>
+        </div>
+
+        {/* Pending Requests Skeleton */}
+        <div className="mb-6">
+          <div className="h-6 w-48 bg-zinc-800 rounded animate-pulse px-4 mb-3" />
+          <div className="space-y-2 px-4">
+            <BookingCardSkeleton />
+            <BookingCardSkeleton />
+          </div>
+        </div>
+
+        {/* Upcoming Bookings Skeleton */}
+        <div>
+          <div className="h-6 w-56 bg-zinc-800 rounded animate-pulse px-4 mb-3" />
+          <div className="space-y-2 px-4">
+            <BookingCardSkeleton />
+            <BookingCardSkeleton />
+            <BookingCardSkeleton />
+          </div>
+        </div>
       </div>
     );
   }
