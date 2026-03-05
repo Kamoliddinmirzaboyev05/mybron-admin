@@ -62,7 +62,6 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
           .single();
 
         if (anyError) {
-          console.error('Error fetching pitch:', anyError);
           setToast({ 
             message: 'Maydon topilmadi. Iltimos avval maydon yarating', 
             type: 'error' 
@@ -76,7 +75,7 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
       
       setPitch(data);
     } catch (error) {
-      console.error('Error fetching pitch:', error);
+      // Error handled silently
     }
   };
 
@@ -180,45 +179,7 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
         status: 'confirmed', // Changed from 'manual' to 'confirmed' to block slots for users
       };
 
-      console.log('📝 CREATING MANUAL BOOKING:');
-      console.log('Selected date object:', selectedDate);
-      console.log('Formatted booking_date:', bookingData.booking_date);
-      console.log('Start time:', bookingData.start_time);
-      console.log('End time:', bookingData.end_time);
-      console.log('Total price:', bookingData.total_price);
-      console.log('Status:', bookingData.status);
-      console.log('Full booking data:', bookingData);
-
-      // Check if slot is available in pitch_slots table
-      const { data: slotCheck, error: slotError } = await supabase
-        .from('pitch_slots')
-        .select('is_available')
-        .eq('pitch_id', pitch.id)
-        .eq('slot_date', bookingData.booking_date)
-        .eq('start_time', bookingData.start_time)
-        .eq('end_time', bookingData.end_time)
-        .single();
-
-      if (slotError && slotError.code !== 'PGRST116') {
-        // PGRST116 = no rows returned (slot doesn't exist in pitch_slots yet)
-        console.error('Error checking slot availability:', slotError);
-      }
-
-      if (slotCheck && !slotCheck.is_available) {
-        setToast({ 
-          message: 'Bu vaqt allaqachon band qilingan!', 
-          type: 'error' 
-        });
-        hotToast.error('Bu vaqt allaqachon band qilingan!', {
-          icon: '❌',
-        });
-        setLoading(false);
-        return;
-      }
-
-      console.log('✅ Slot is available, proceeding with booking');
-
-      // Insert booking - database trigger will check for overlaps and update pitch_slots
+      // Insert booking - overlap validation happens in the database
       const { error } = await supabase.from('bookings').insert(bookingData);
 
       if (error) {
@@ -248,7 +209,6 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
       }, 1000);
 
     } catch (error: any) {
-      console.error('Error creating booking:', error);
       setToast({ 
         message: error.message || 'Xatolik yuz berdi. Iltimos qaytadan urinib ko\'ring', 
         type: 'error' 

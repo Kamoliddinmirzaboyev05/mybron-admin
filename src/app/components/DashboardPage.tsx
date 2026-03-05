@@ -57,7 +57,7 @@ export default function DashboardPage() {
         oscillator.start(audioContext.currentTime);
         oscillator.stop(audioContext.currentTime + 0.5);
       } catch (error) {
-        console.error('Error creating beep sound:', error);
+        // Error handled silently
       }
     };
     
@@ -81,7 +81,6 @@ export default function DashboardPage() {
     if ('Notification' in window) {
       const permission = await Notification.requestPermission();
       notificationPermissionRef.current = permission;
-      console.log('🔔 Notification permission:', permission);
     }
   };
 
@@ -113,17 +112,13 @@ export default function DashboardPage() {
 
   const playNotificationSound = () => {
     if (audioRef.current) {
-      audioRef.current.play().catch(err => console.log('Audio play failed:', err));
+      audioRef.current.play().catch(() => {});
     }
   };
 
   const subscribeToBookings = () => {
     // Get local timezone date (Uzbekistan Time)
     const todayDate = format(new Date(), 'yyyy-MM-dd');
-    
-    console.log('🔌 Setting up real-time subscription for bookings...');
-    console.log('📅 Today\'s date (local timezone):', todayDate);
-    console.log('🌍 Timezone offset:', new Date().getTimezoneOffset() / -60, 'hours from UTC');
     
     const channel = supabase
       .channel('bookings-realtime', {
@@ -135,9 +130,6 @@ export default function DashboardPage() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'bookings' },
         async (payload) => {
-          console.log('🆕 New booking received:', payload);
-          console.log('📦 Payload data:', JSON.stringify(payload.new, null, 2));
-          
           // Fetch the complete booking with pitch details
           const { data, error } = await supabase
             .from('bookings')
@@ -151,36 +143,24 @@ export default function DashboardPage() {
             .eq('id', payload.new.id)
             .single();
 
-          console.log('📊 Fetched booking data:', data);
-          console.log('❌ Fetch error:', error);
-
           if (error) {
-            console.error('Error fetching booking details:', error);
             return;
           }
 
           if (data) {
-            console.log('📅 Booking date:', data.booking_date);
-            console.log('🔖 Booking status:', data.status);
-            
             // Prepend new booking to the list (Task 2: Handle New Inserts)
-            console.log('✅ Prepending booking to list');
             setBookings(current => {
-              console.log('📝 Previous bookings count:', current.length);
               const updated = [data, ...current];
-              console.log('📝 Updated bookings count:', updated.length);
               return updated;
             });
             
             // Recalculate stats if it's a confirmed booking for today
             if ((data.status === 'confirmed' || data.status === 'manual') && data.booking_date === todayDate) {
-              console.log('� Recalculating stats for new confirmed booking');
               setTimeout(() => recalculateStats(), 100);
             }
             
             // Play notification sound and show alert if it's a pending booking
             if (data.status === 'pending') {
-              console.log('🔔 Playing notification sound and showing alert');
               playNotificationSound();
               showNotification(data);
               toast.success('Yangi bron so\'rovi keldi!', {
@@ -195,9 +175,6 @@ export default function DashboardPage() {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'bookings' },
         async (payload) => {
-          console.log('🔄 Booking updated:', payload);
-          console.log('📦 Update payload:', JSON.stringify(payload.new, null, 2));
-          
           // Fetch the complete booking with pitch details
           const { data, error } = await supabase
             .from('bookings')
@@ -212,29 +189,22 @@ export default function DashboardPage() {
             .single();
 
           if (error) {
-            console.error('Error fetching updated booking:', error);
             return;
           }
 
           if (data) {
-            console.log('✏️ Updating booking in list:', data.id);
-            console.log('� New status:', data.status);
-            
             // Task 1: Unified State Sync - Update booking in state
             setBookings(current => {
               const index = current.findIndex(b => b.id === data.id);
-              console.log('📍 Found booking at index:', index);
               
               if (index !== -1) {
                 // Update existing booking
                 const updated = current.map(b => 
                   b.id === data.id ? data : b
                 );
-                console.log('✅ Booking updated in list');
                 return updated;
               } else {
                 // Booking not in list, add it
-                console.log('➕ Booking not found, adding to list');
                 return [data, ...current];
               }
             });
@@ -245,7 +215,6 @@ export default function DashboardPage() {
             
             // Task 3: Automatic Stats Re-calculation
             if (data.status === 'confirmed' || data.status === 'manual') {
-              console.log('📊 Recalculating stats after status change to confirmed');
               setTimeout(() => recalculateStats(), 100);
             }
           }
@@ -255,27 +224,11 @@ export default function DashboardPage() {
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'bookings' },
         (payload) => {
-          console.log('🗑️ Booking deleted:', payload);
-          console.log('📦 Delete payload:', JSON.stringify(payload.old, null, 2));
           setBookings(prev => prev.filter(b => b.id !== payload.old.id));
           recalculateStats();
         }
       )
-      .subscribe((status, err) => {
-        console.log('📡 Subscription status:', status);
-        if (err) {
-          console.error('❌ Subscription error:', err);
-        }
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Successfully subscribed to bookings real-time updates');
-        }
-        if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Channel error - real-time updates may not work');
-        }
-        if (status === 'TIMED_OUT') {
-          console.error('⏱️ Subscription timed out');
-        }
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -331,13 +284,6 @@ export default function DashboardPage() {
       // Get current month start and end dates
       const monthStart = format(new Date(uzbekistanTime.getFullYear(), uzbekistanTime.getMonth(), 1), 'yyyy-MM-dd');
       const monthEnd = format(new Date(uzbekistanTime.getFullYear(), uzbekistanTime.getMonth() + 1, 0), 'yyyy-MM-dd');
-      
-      console.log('📅 FETCHING BOOKINGS:');
-      console.log('Current time (local):', now.toISOString());
-      console.log('Uzbekistan time:', uzbekistanTime.toISOString());
-      console.log('Today\'s date (UZ):', todayDate);
-      console.log('Month start:', monthStart);
-      console.log('Month end:', monthEnd);
 
       // Fetch ALL pending requests (regardless of date)
       const { data: pendingData, error: pendingError } = await supabase
@@ -379,22 +325,13 @@ export default function DashboardPage() {
 
       setBookings(uniqueBookings);
       
-      console.log('📦 FETCHED BOOKINGS:');
-      console.log('Pending count:', pendingData?.length || 0);
-      console.log('Upcoming count:', upcomingData?.length || 0);
-      console.log('Total unique bookings:', uniqueBookings.length);
-      
       // Calculate statistics for today only - confirmed bookings
       const todayBookings = uniqueBookings.filter(
         (b) => b.status === 'confirmed' && b.booking_date === todayDate
       );
       
-      console.log('💰 FILTERING TODAY\'S BOOKINGS:');
-      console.log('Today\'s bookings:', todayBookings);
-      
       // Calculate total revenue from total_price
       const revenue = todayBookings.reduce((sum, booking) => {
-        console.log(`Adding booking ${booking.id}: ${booking.total_price}`);
         return sum + (booking.total_price || 0);
       }, 0);
       
@@ -413,10 +350,6 @@ export default function DashboardPage() {
       
       setTodayRevenue(revenue);
       setHoursBookedToday(hours);
-      
-      console.log('💰 STATS CALCULATED:');
-      console.log('Today\'s revenue:', revenue);
-      console.log('Today\'s hours:', hours);
       
       // Calculate monthly revenue
       const { data: monthlyData, error: monthlyError } = await supabase
@@ -485,18 +418,14 @@ export default function DashboardPage() {
         .select();
 
       if (error) {
-        console.error('SUPABASE_UPDATE_ERROR:', error);
         toast.error('Bazada xatolik: ' + error.message);
         throw error;
       }
       
       if (!data || data.length === 0) {
-        console.error('NO_DATA_RETURNED:', { bookingId: id, data });
         toast.error('Bron topilmadi yoki yangilanmadi');
         throw new Error('No data returned from update');
       }
-
-      console.log('UPDATE_SUCCESSFUL:', data);
       
       // Show success toast based on status
       if (newStatus === 'confirmed') {
@@ -518,7 +447,6 @@ export default function DashboardPage() {
         recalculateStats();
       }
     } catch (error) {
-      console.error('Error updating booking status:', error);
       toast.error('Xatolik yuz berdi. Iltimos qaytadan urinib ko\'ring');
       // Revert optimistic update on error
       fetchBookings();

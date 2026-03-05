@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "lib": ["deno.window"]
+  },
+  "imports": {
+    "hono": "https://deno.land/x/hono@v3.11.7/mod.ts",
+    "supabase": "https://esm.sh/@supabase/supabase-js@2"
+  }
+}
