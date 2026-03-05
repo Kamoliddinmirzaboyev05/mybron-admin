@@ -161,9 +161,11 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
       const duration = calculateDuration();
       const totalPrice = calculateTotalPrice();
 
-      // Format time as HH:mm:ss for TIME columns
+      // Format time as HH:mm:00 for TIME columns (always set seconds to 00)
       const formatTimeOnly = (date: Date): string => {
-        return format(date, 'HH:mm:ss');
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        return `${hours}:${minutes}:00`; // Always use :00 for seconds
       };
 
       // Prepare booking data with correct column names and types
@@ -175,7 +177,7 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
         end_time: formatTimeOnly(selectedTimeSlot.end),     // TIME format: '20:00:00'
         booking_date: format(selectedDate, 'yyyy-MM-dd'),   // DATE format: '2026-03-03'
         total_price: totalPrice,
-        status: 'manual', // Changed from 'confirmed' to 'manual' to distinguish manual bookings
+        status: 'confirmed', // Changed from 'manual' to 'confirmed' to block slots for users
       };
 
       console.log('📝 CREATING MANUAL BOOKING:');
@@ -184,9 +186,39 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
       console.log('Start time:', bookingData.start_time);
       console.log('End time:', bookingData.end_time);
       console.log('Total price:', bookingData.total_price);
+      console.log('Status:', bookingData.status);
       console.log('Full booking data:', bookingData);
 
-      // Insert booking - database trigger will check for overlaps
+      // Check if slot is available in pitch_slots table
+      const { data: slotCheck, error: slotError } = await supabase
+        .from('pitch_slots')
+        .select('is_available')
+        .eq('pitch_id', pitch.id)
+        .eq('slot_date', bookingData.booking_date)
+        .eq('start_time', bookingData.start_time)
+        .eq('end_time', bookingData.end_time)
+        .single();
+
+      if (slotError && slotError.code !== 'PGRST116') {
+        // PGRST116 = no rows returned (slot doesn't exist in pitch_slots yet)
+        console.error('Error checking slot availability:', slotError);
+      }
+
+      if (slotCheck && !slotCheck.is_available) {
+        setToast({ 
+          message: 'Bu vaqt allaqachon band qilingan!', 
+          type: 'error' 
+        });
+        hotToast.error('Bu vaqt allaqachon band qilingan!', {
+          icon: '❌',
+        });
+        setLoading(false);
+        return;
+      }
+
+      console.log('✅ Slot is available, proceeding with booking');
+
+      // Insert booking - database trigger will check for overlaps and update pitch_slots
       const { error } = await supabase.from('bookings').insert(bookingData);
 
       if (error) {
@@ -286,7 +318,7 @@ export default function ManualBookingModal({ onClose, onSuccess }: ManualBooking
                 if (pitch && selectedDate) {
                   setShowTimeSheet(true);
                 } else {
-                  alert('Avval sanani tanlang');
+                  hotToast.error('Avval sanani tanlang');
                 }
               }}
               className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg text-left flex items-center justify-between text-white hover:bg-zinc-750 transition-colors"

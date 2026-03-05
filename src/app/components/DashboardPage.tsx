@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Loader2, Calendar, Clock, Phone, MapPin, Check, X, Bell } from 'lucide-react';
+import { Plus, Loader2, Calendar, Clock, Phone, MapPin, Check, X, Bell, DollarSign, User } from 'lucide-react';
 import { format } from 'date-fns';
 import ManualBookingModal from './ManualBookingModal';
 import toast from 'react-hot-toast';
@@ -30,14 +30,41 @@ export default function DashboardPage() {
   const [showManualBooking, setShowManualBooking] = useState(false);
   const [todayRevenue, setTodayRevenue] = useState(0);
   const [hoursBookedToday, setHoursBookedToday] = useState(0);
+  const [monthlyRevenue, setMonthlyRevenue] = useState(0);
   const [showNewRequestBanner, setShowNewRequestBanner] = useState(false);
   const [updatedBookingId, setUpdatedBookingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const notificationPermissionRef = useRef<NotificationPermission>('default');
 
   useEffect(() => {
-    // Initialize notification sound
-    audioRef.current = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGGS57OihUBELTKXh8bllHAU2jdXvzn0pBSh+zPDajzsKElyx6OyrWBUIQ5zd8sFuJAUuhM/z24k2CBhku+zooVARC0yl4fG5ZRwFNo3V7859KQUofsz');
+    // Initialize notification sound - using Web Audio API for better sound
+    // Create a simple beep sound
+    const createBeepSound = () => {
+      try {
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = 800; // Frequency in Hz
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.5);
+      } catch (error) {
+        console.error('Error creating beep sound:', error);
+      }
+    };
+    
+    // Store the beep function
+    audioRef.current = {
+      play: createBeepSound
+    } as any;
     
     // Request notification permission
     requestNotificationPermission();
@@ -59,10 +86,14 @@ export default function DashboardPage() {
   };
 
   const showNotification = (booking: Booking) => {
+    // Format time as HH:mm - HH:mm
+    const startTime = booking.start_time.substring(0, 5);
+    const endTime = booking.end_time.substring(0, 5);
+    
     // Show browser notification if permission granted
     if (notificationPermissionRef.current === 'granted') {
       const notification = new Notification('Yangi bron so\'rovi!', {
-        body: `${booking.full_name} - ${booking.pitches?.name}\n${booking.start_time.substring(0, 5)} - ${booking.end_time.substring(0, 5)}`,
+        body: `${booking.full_name} - ${booking.pitches?.name}\n${startTime} - ${endTime}`,
         icon: '/bronlogo.png',
         badge: '/bronlogo.png',
         tag: booking.id,
@@ -257,7 +288,7 @@ export default function DashboardPage() {
       const todayDate = format(new Date(), 'yyyy-MM-dd');
       
       const todayBookings = prev.filter(
-        (b) => (b.status === 'confirmed' || b.status === 'manual') && b.booking_date === todayDate
+        (b) => b.status === 'confirmed' && b.booking_date === todayDate
       );
       
       // Calculate total revenue
@@ -297,11 +328,16 @@ export default function DashboardPage() {
       const uzbekistanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tashkent' }));
       const todayDate = format(uzbekistanTime, 'yyyy-MM-dd');
       
+      // Get current month start and end dates
+      const monthStart = format(new Date(uzbekistanTime.getFullYear(), uzbekistanTime.getMonth(), 1), 'yyyy-MM-dd');
+      const monthEnd = format(new Date(uzbekistanTime.getFullYear(), uzbekistanTime.getMonth() + 1, 0), 'yyyy-MM-dd');
+      
       console.log('📅 FETCHING BOOKINGS:');
       console.log('Current time (local):', now.toISOString());
       console.log('Uzbekistan time:', uzbekistanTime.toISOString());
       console.log('Today\'s date (UZ):', todayDate);
-      console.log('Expected date for stats: 2026-03-04');
+      console.log('Month start:', monthStart);
+      console.log('Month end:', monthEnd);
 
       // Fetch ALL pending requests (regardless of date)
       const { data: pendingData, error: pendingError } = await supabase
@@ -329,7 +365,7 @@ export default function DashboardPage() {
           )
         `)
         .gte('booking_date', todayDate)
-        .in('status', ['confirmed', 'manual'])
+        .eq('status', 'confirmed') // Only confirmed bookings (includes manual bookings)
         .order('booking_date', { ascending: true })
         .order('start_time', { ascending: true });
 
@@ -347,30 +383,14 @@ export default function DashboardPage() {
       console.log('Pending count:', pendingData?.length || 0);
       console.log('Upcoming count:', upcomingData?.length || 0);
       console.log('Total unique bookings:', uniqueBookings.length);
-      console.log('Pending data:', pendingData);
-      console.log('Upcoming data:', upcomingData);
-      console.log('All unique bookings:', uniqueBookings);
       
-      // Log user_id distribution
-      const manualBookings = uniqueBookings.filter(b => b.user_id === null);
-      const userBookings = uniqueBookings.filter(b => b.user_id !== null);
-      console.log('📊 BOOKING DISTRIBUTION:');
-      console.log('Manual bookings (user_id = null):', manualBookings.length);
-      console.log('User bookings (user_id present):', userBookings.length);
-      console.log('Manual bookings data:', manualBookings);
-      console.log('User bookings data:', userBookings);
-      
-      // Calculate statistics for today only - confirmed AND manual bookings
+      // Calculate statistics for today only - confirmed bookings
       const todayBookings = uniqueBookings.filter(
-        (b) => (b.status === 'confirmed' || b.status === 'manual') && b.booking_date === todayDate
+        (b) => b.status === 'confirmed' && b.booking_date === todayDate
       );
       
       console.log('💰 FILTERING TODAY\'S BOOKINGS:');
-      console.log('Today\'s date for comparison:', todayDate);
-      console.log('All unique bookings:', uniqueBookings);
-      console.log('Bookings with today\'s date:', uniqueBookings.filter(b => b.booking_date === todayDate));
-      console.log('Confirmed/Manual bookings:', uniqueBookings.filter(b => b.status === 'confirmed' || b.status === 'manual'));
-      console.log('Final today\'s bookings:', todayBookings);
+      console.log('Today\'s bookings:', todayBookings);
       
       // Calculate total revenue from total_price
       const revenue = todayBookings.reduce((sum, booking) => {
@@ -395,20 +415,30 @@ export default function DashboardPage() {
       setHoursBookedToday(hours);
       
       console.log('💰 STATS CALCULATED:');
-      console.log('Today\'s date:', todayDate);
-      console.log('Today\'s bookings count:', todayBookings.length);
       console.log('Today\'s revenue:', revenue);
       console.log('Today\'s hours:', hours);
-      console.log('Today\'s bookings:', todayBookings);
       
-      // Log today's bookings by user_id
-      const todayManual = todayBookings.filter(b => b.user_id === null);
-      const todayUser = todayBookings.filter(b => b.user_id !== null);
-      console.log('📊 TODAY\'S BOOKING DISTRIBUTION:');
-      console.log('Manual bookings (user_id = null):', todayManual.length);
-      console.log('User bookings (user_id present):', todayUser.length);
-      console.log('Manual bookings:', todayManual);
-      console.log('User bookings:', todayUser);
+      // Calculate monthly revenue
+      const { data: monthlyData, error: monthlyError } = await supabase
+        .from('bookings')
+        .select('total_price')
+        .gte('booking_date', monthStart)
+        .lte('booking_date', monthEnd)
+        .eq('status', 'confirmed'); // Only confirmed bookings
+
+      if (monthlyError) throw monthlyError;
+
+      const monthlyRev = (monthlyData || []).reduce((sum, booking) => {
+        return sum + (booking.total_price || 0);
+      }, 0);
+      
+      setMonthlyRevenue(monthlyRev);
+      
+      console.log('📊 MONTHLY REVENUE:');
+      console.log('Month start:', monthStart);
+      console.log('Month end:', monthEnd);
+      console.log('Monthly bookings count:', monthlyData?.length || 0);
+      console.log('Monthly revenue:', monthlyRev);
     } catch (error) {
       console.error('Error fetching bookings:', error);
     } finally {
@@ -423,7 +453,7 @@ export default function DashboardPage() {
       
       if (!id || typeof id !== 'string') {
         console.error('INVALID_BOOKING_ID:', id);
-        alert('Noto\'g\'ri bron ID');
+        toast.error('Noto\'g\'ri bron ID');
         return;
       }
 
@@ -431,7 +461,7 @@ export default function DashboardPage() {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !session) {
         console.error('SESSION_ERROR:', sessionError);
-        alert('Sessiya tugagan. Iltimos qaytadan kiring.');
+        toast.error('Sessiya tugagan. Iltimos qaytadan kiring.');
         return;
       }
       console.log('SESSION_VALID:', { userId: session.user.id });
@@ -456,14 +486,12 @@ export default function DashboardPage() {
 
       if (error) {
         console.error('SUPABASE_UPDATE_ERROR:', error);
-        alert('Bazada xatolik: ' + error.message);
         toast.error('Bazada xatolik: ' + error.message);
         throw error;
       }
       
       if (!data || data.length === 0) {
         console.error('NO_DATA_RETURNED:', { bookingId: id, data });
-        alert('Bron topilmadi yoki yangilanmadi');
         toast.error('Bron topilmadi yoki yangilanmadi');
         throw new Error('No data returned from update');
       }
@@ -491,7 +519,7 @@ export default function DashboardPage() {
       }
     } catch (error) {
       console.error('Error updating booking status:', error);
-      alert('Xatolik yuz berdi. Iltimos qaytadan urinib ko\'ring');
+      toast.error('Xatolik yuz berdi. Iltimos qaytadan urinib ko\'ring');
       // Revert optimistic update on error
       fetchBookings();
     }
@@ -502,12 +530,13 @@ export default function DashboardPage() {
   };
 
   const handleReject = async (bookingId: string) => {
-    await handleStatusUpdate(bookingId, 'rejected');
+    await handleStatusUpdate(bookingId, 'cancelled');
   };
 
   const handleCancel = async (bookingId: string) => {
-    // Confirm before canceling
-    if (!confirm('Bronni bekor qilmoqchimisiz?')) {
+    // Confirm before canceling with toast
+    const confirmed = window.confirm('Bronni bekor qilmoqchimisiz?');
+    if (!confirmed) {
       return;
     }
 
@@ -526,15 +555,41 @@ export default function DashboardPage() {
     return durationHours;
   };
 
-  // Filter upcoming bookings: show all confirmed bookings for today and future dates
+  const fetchProfileData = async () => {
+    // Monthly revenue is now calculated in fetchBookings
+    return;
+  };
+
+  const isBookingCompleted = (booking: Booking) => {
+    const now = new Date();
+    const uzbekistanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tashkent' }));
+    const currentTime = format(uzbekistanTime, 'HH:mm:ss');
+    const todayDate = format(uzbekistanTime, 'yyyy-MM-dd');
+    
+    // If booking is for today and end time has passed
+    if (booking.booking_date === todayDate) {
+      return booking.end_time < currentTime;
+    }
+    
+    return false;
+  };
+
+  // Filter bookings for today's schedule
   const now = new Date();
   const uzbekistanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tashkent' }));
   const todayDate = format(uzbekistanTime, 'yyyy-MM-dd');
   
+  const todaySchedule = bookings
+    .filter((b) => {
+      return b.status === 'confirmed' && b.booking_date === todayDate;
+    })
+    .sort((a, b) => a.start_time.localeCompare(b.start_time));
+
+  // Filter upcoming bookings: show all confirmed bookings for today and future dates
   const upcomingBookings = bookings
     .filter((b) => {
-      // Only confirmed or manual bookings
-      if (b.status !== 'confirmed' && b.status !== 'manual') return false;
+      // Only confirmed bookings
+      if (b.status !== 'confirmed') return false;
       
       // Show all bookings for today (regardless of time - persist until end of day)
       if (b.booking_date === todayDate) return true;
@@ -637,159 +692,207 @@ export default function DashboardPage() {
       )}
 
       {/* Header */}
-      <div className="px-4 pt-6 pb-4 flex items-center gap-3">
-        <img 
-          src="/bronlogo.png" 
-          alt="Bron Logo" 
-          className="h-10 w-auto"
-        />
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-white mb-1">Dashboard</h1>
-          <p className="text-zinc-400 text-sm">{format(new Date(), 'EEEE, dd MMMM')}</p>
-        </div>
-      </div>
-
-      {/* Statistics Cards */}
-      <div className="px-4 mb-6">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <p className="text-zinc-400 text-xs mb-1">Bugungi daromad</p>
-            <p className="text-2xl font-bold text-white">{todayRevenue.toLocaleString()} so'm</p>
-          </div>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <p className="text-zinc-400 text-xs mb-1">Band qilingan soatlar</p>
-            <p className="text-2xl font-bold text-white">{hoursBookedToday} soat</p>
+      <div className="px-4 pt-6 pb-4 border-b border-zinc-800">
+        <div className="flex items-center gap-3">
+          <img 
+            src="/bronlogo.png" 
+            alt="Bron Logo" 
+            className="h-10 w-auto"
+          />
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-white mb-1">Admin Dashboard</h1>
+            <p className="text-zinc-400 text-sm">{format(new Date(), 'EEEE, dd MMMM yyyy')}</p>
           </div>
         </div>
       </div>
 
-      {/* Pending Requests */}
-      {pendingBookings.length > 0 && (
-        <div className="mb-6">
-          <h2 className="text-lg font-semibold text-white px-4 mb-3">Kutilayotgan so'rovlar</h2>
-          <div className="space-y-2 px-4">
-            {pendingBookings.map((booking) => (
-              <div
-                key={booking.id}
-                className={`bg-zinc-900 border border-zinc-800 rounded-xl p-4 transition-all duration-300 ${
-                  updatedBookingId === booking.id ? 'animate-pulse ring-2 ring-blue-500 shadow-lg shadow-blue-500/50' : ''
-                }`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p className="text-white font-medium mb-1">{booking.full_name}</p>
-                    <div className="flex items-center gap-2 text-zinc-400 text-sm">
-                      <Phone className="w-3.5 h-3.5" />
-                      <span>{booking.phone}</span>
-                    </div>
-                  </div>
-                  <span className="bg-yellow-950 text-yellow-400 text-xs px-2 py-1 rounded">
-                    Pending
-                  </span>
-                </div>
-                
-                <div className="flex items-center gap-4 text-sm text-zinc-400 mb-3">
-                  <div className="flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span>{booking.booking_date ? format(new Date(booking.booking_date + 'T00:00:00'), 'dd MMM yyyy') : 'Sana ko\'rsatilmagan'}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5" />
-                    <span>{booking.pitches?.name}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>
-                      {booking.start_time.substring(0, 5)} - {booking.end_time.substring(0, 5)}
-                      {' '}({calculateBookingDuration(booking.start_time, booking.end_time)} soat)
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleApprove(booking.id)}
-                    className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <Check className="w-4 h-4" />
-                    Tasdiqlash
-                  </button>
-                  <button
-                    onClick={() => handleReject(booking.id)}
-                    className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                    Rad etish
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Upcoming Bookings */}
-      <div>
-        <h2 className="text-lg font-semibold text-white px-4 mb-3">Yaqinlashib kelayotgan bronlar</h2>
-        {upcomingBookings.length === 0 ? (
-          <div className="px-4">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center">
-              <Calendar className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
-              <p className="text-zinc-400">Tasdiqlangan bronlar yo'q</p>
+      {/* Financial Stats - 2 Cards Side by Side */}
+      <div className="px-4 pt-4">
+        <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-3">
+          <DollarSign className="w-5 h-5 text-green-400" />
+          Moliyaviy Ma'lumotlar
+        </h2>
+        
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          {/* Today's Revenue */}
+          <div className="bg-gradient-to-br from-green-900/30 to-green-950/50 border border-green-800/50 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Calendar className="w-4 h-4 text-green-400" />
+              <p className="text-xs text-green-300">Bugungi daromad</p>
             </div>
+            <p className="text-2xl font-bold text-white">
+              {todayRevenue.toLocaleString()} <span className="text-sm text-green-300">so'm</span>
+            </p>
+            <p className="text-xs text-green-400 mt-1">{hoursBookedToday} soat</p>
           </div>
-        ) : (
-          <div className="space-y-2 px-4">
-            {upcomingBookings.map((booking) => (
-              <div
-                key={booking.id}
-                className={`bg-zinc-900 border border-zinc-800 rounded-xl p-4 transition-all duration-300 ${
-                  updatedBookingId === booking.id ? 'animate-pulse ring-2 ring-green-500 shadow-lg shadow-green-500/50' : ''
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <p className="text-white font-medium mb-1">{booking.full_name}</p>
-                    <div className="flex items-center gap-2 text-zinc-400 text-sm">
-                      <Phone className="w-3.5 h-3.5" />
-                      <span>{booking.phone}</span>
+
+          {/* Monthly Revenue */}
+          <div className="bg-gradient-to-br from-blue-900/30 to-blue-950/50 border border-blue-800/50 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <DollarSign className="w-4 h-4 text-blue-400" />
+              <p className="text-xs text-blue-300">Oylik daromad</p>
+            </div>
+            <p className="text-2xl font-bold text-white">
+              {monthlyRevenue.toLocaleString()} <span className="text-sm text-blue-300">so'm</span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content - Single Column */}
+      <div className="px-4">
+        
+        {/* Pending Requests + Today's Schedule */}
+        <div className="space-y-6 max-w-2xl mx-auto">
+          {/* Pending Requests */}
+          <div>
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+              <Bell className="w-5 h-5 text-yellow-400" />
+              Kutilayotgan So'rovlar
+              {pendingBookings.length > 0 && (
+                <span className="bg-yellow-600 text-white text-xs px-2 py-1 rounded-full">
+                  {pendingBookings.length}
+                </span>
+              )}
+            </h2>
+            
+            {pendingBookings.length === 0 ? (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center">
+                <Check className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+                <p className="text-zinc-400">Yangi so'rovlar yo'q</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {pendingBookings.map((booking) => (
+                  <div
+                    key={booking.id}
+                    className={`bg-zinc-900 border border-yellow-800/50 rounded-xl p-4 transition-all ${
+                      updatedBookingId === booking.id ? 'ring-2 ring-yellow-500 shadow-lg shadow-yellow-500/50' : ''
+                    }`}
+                  >
+                    {/* Booking info */}
+                    <div className="space-y-2 mb-4">
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-zinc-400" />
+                        <p className="text-white font-medium">{booking.full_name}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-4 h-4 text-zinc-400" />
+                        <p className="text-zinc-400 text-sm">{booking.phone}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-zinc-400" />
+                        <p className="text-zinc-400 text-sm">
+                          {format(new Date(booking.booking_date + 'T00:00:00'), 'dd MMM yyyy')}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-zinc-400" />
+                        <p className="text-zinc-400 text-sm">
+                          {booking.start_time.substring(0, 5)} - {booking.end_time.substring(0, 5)}
+                          {' '}({calculateBookingDuration(booking.start_time, booking.end_time)} soat)
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-zinc-400" />
+                        <p className="text-zinc-400 text-sm">{booking.pitches?.name}</p>
+                      </div>
+                    </div>
+
+                    {/* Large action buttons */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => handleApprove(booking.id)}
+                        className="bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all hover:scale-105"
+                      >
+                        <Check className="w-5 h-5" />
+                        Tasdiqlash
+                      </button>
+                      <button
+                        onClick={() => handleReject(booking.id)}
+                        className="bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all hover:scale-105"
+                      >
+                        <X className="w-5 h-5" />
+                        Rad etish
+                      </button>
                     </div>
                   </div>
-                  <span className="bg-green-950 text-green-400 text-xs px-2 py-1 rounded">
-                    Tasdiqlangan
-                  </span>
-                </div>
-                
-                <div className="flex items-center gap-4 text-sm text-zinc-400 mb-3">
-                  <div className="flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span>{booking.booking_date ? format(new Date(booking.booking_date + 'T00:00:00'), 'dd MMM yyyy') : 'Bugun'}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5" />
-                    <span>{booking.pitches?.name}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>
-                      {booking.start_time.substring(0, 5)} - {booking.end_time.substring(0, 5)}
-                      {' '}({calculateBookingDuration(booking.start_time, booking.end_time)} soat)
-                    </span>
-                  </div>
-                </div>
-
-                {/* Cancel Button */}
-                <button
-                  onClick={() => handleCancel(booking.id)}
-                  className="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                  Bekor qilish
-                </button>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        )}
+
+          {/* Today's Schedule - Last 3 Bookings */}
+          <div>
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+              <Clock className="w-5 h-5 text-blue-400" />
+              Bugungi Jadval
+            </h2>
+            
+            {todaySchedule.length === 0 ? (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center">
+                <Calendar className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+                <p className="text-zinc-400">Bugun uchun bronlar yo'q</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {todaySchedule.slice(-3).map((booking) => {
+                  const isCompleted = isBookingCompleted(booking);
+                  return (
+                    <div
+                      key={booking.id}
+                      className={`relative bg-zinc-900 border rounded-xl p-4 transition-all ${
+                        isCompleted 
+                          ? 'border-zinc-800 opacity-60' 
+                          : 'border-blue-800/50 shadow-lg shadow-blue-900/20'
+                      }`}
+                    >
+                      {/* Time badge */}
+                      <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium mb-3 ${
+                        isCompleted 
+                          ? 'bg-zinc-800 text-zinc-400' 
+                          : 'bg-blue-600 text-white'
+                      }`}>
+                        <Clock className="w-4 h-4" />
+                        {booking.start_time.substring(0, 5)} - {booking.end_time.substring(0, 5)}
+                      </div>
+
+                      {/* Booking details */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-zinc-400" />
+                          <p className="text-white font-medium">{booking.full_name}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Phone className="w-4 h-4 text-zinc-400" />
+                          <p className="text-zinc-400 text-sm">{booking.phone}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <MapPin className="w-4 h-4 text-zinc-400" />
+                          <p className="text-zinc-400 text-sm">{booking.pitches?.name}</p>
+                        </div>
+                      </div>
+
+                      {/* Status badge */}
+                      <div className="mt-3 flex justify-between items-center">
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          isCompleted 
+                            ? 'bg-purple-950 text-purple-400 border border-purple-800' 
+                            : 'bg-green-950 text-green-400 border border-green-800'
+                        }`}>
+                          {isCompleted ? 'Tugallangan' : 'Faol'}
+                        </span>
+                        <span className="text-sm font-semibold text-white">
+                          {booking.total_price.toLocaleString()} so'm
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Floating Action Button */}

@@ -40,17 +40,8 @@ export default function TimeSlotSheet({ pitch, date, onSelectSlot, onClose }: Ti
       const [startHour, startMinute] = pitch.start_time.split(':').map(Number);
       const [endHour, endMinute] = pitch.end_time.split(':').map(Number);
 
-      // Get existing bookings for this pitch and date
-      const selectedDate = format(date, 'yyyy-MM-dd'); // Format: '2026-03-03'
-
-      const { data: bookings, error } = await supabase
-        .from('bookings')
-        .select('start_time, end_time')
-        .eq('pitch_id', pitch.id)
-        .eq('booking_date', selectedDate)
-        .in('status', ['confirmed', 'manual']);
-
-      if (error) throw error;
+      // Get selected date
+      const selectedDate = format(date, 'yyyy-MM-dd'); // Format: '2026-03-05'
 
       // Get current Uzbekistan time
       const now = new Date();
@@ -59,11 +50,28 @@ export default function TimeSlotSheet({ pitch, date, onSelectSlot, onClose }: Ti
       const todayDateUZ = format(uzbekistanTime, 'yyyy-MM-dd');
       const isToday = selectedDate === todayDateUZ;
 
-      console.log('⏰ TIME SLOT GENERATION:');
+      console.log('⏰ TIME SLOT GENERATION (pitch_slots):');
       console.log('Selected date:', selectedDate);
       console.log('Today (Uzbekistan):', todayDateUZ);
       console.log('Current hour (Uzbekistan):', currentHourUZ);
       console.log('Is today:', isToday);
+
+      // Fetch available slots from pitch_slots table
+      const { data: pitchSlots, error: slotsError } = await supabase
+        .from('pitch_slots')
+        .select('start_time, end_time, is_available')
+        .eq('pitch_id', pitch.id)
+        .eq('slot_date', selectedDate)
+        .order('start_time', { ascending: true });
+
+      if (slotsError) {
+        console.error('Error fetching pitch_slots:', slotsError);
+        // Fallback to old method if pitch_slots doesn't exist yet
+        await generateTimeSlotsLegacy();
+        return;
+      }
+
+      console.log('📊 Fetched pitch_slots:', pitchSlots);
 
       // Generate 1-hour time slots
       const slots: TimeSlot[] = [];
@@ -80,17 +88,100 @@ export default function TimeSlotSheet({ pitch, date, onSelectSlot, onClose }: Ti
         const slotStart = setMinutes(setHours(date, currentHour), 0);
         const slotEnd = setMinutes(setHours(date, currentHour + 1), 0);
 
-        // Format times for comparison (HH:mm:ss)
-        const slotStartTime = format(slotStart, 'HH:mm:ss');
-        const slotEndTime = format(slotEnd, 'HH:mm:ss');
+        // Format times for comparison (HH:mm only, ignore seconds)
+        const slotStartTime = format(slotStart, 'HH:mm');
+        const slotEndTime = format(slotEnd, 'HH:mm');
 
-        // Check overlap with TIME columns
+        // Check if slot exists in pitch_slots and is available
+        const pitchSlot = pitchSlots?.find((ps) => {
+          const psStart = ps.start_time.substring(0, 5);
+          const psEnd = ps.end_time.substring(0, 5);
+          return psStart === slotStartTime && psEnd === slotEndTime;
+        });
+
+        // If slot exists in pitch_slots, use its availability
+        // If slot doesn't exist, check bookings (fallback)
+        let isAvailable = true;
+        
+        if (pitchSlot) {
+          isAvailable = pitchSlot.is_available;
+          console.log(`✅ Slot ${slotStartTime}-${slotEndTime}: ${isAvailable ? 'Available' : 'Occupied'} (from pitch_slots)`);
+        } else {
+          // Fallback: check bookings table
+          const { data: bookings } = await supabase
+            .from('bookings')
+            .select('start_time, end_time')
+            .eq('pitch_id', pitch.id)
+            .eq('booking_date', selectedDate)
+            .in('status', ['confirmed', 'pending']);
+
+          const isBooked = bookings?.some((booking) => {
+            const bookingStart = booking.start_time.substring(0, 5);
+            const bookingEnd = booking.end_time.substring(0, 5);
+            return slotStartTime < bookingEnd && slotEndTime > bookingStart;
+          });
+
+          isAvailable = !isBooked;
+          console.log(`⚠️ Slot ${slotStartTime}-${slotEndTime}: ${isAvailable ? 'Available' : 'Occupied'} (fallback to bookings)`);
+        }
+
+        slots.push({
+          start: slotStart,
+          end: slotEnd,
+          available: isAvailable,
+        });
+
+        currentHour++;
+      }
+
+      console.log('✅ Generated slots:', slots.length);
+      setTimeSlots(slots);
+    } catch (error) {
+      console.error('Error generating time slots:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Legacy method (fallback if pitch_slots doesn't exist)
+  const generateTimeSlotsLegacy = async () => {
+    try {
+      const [startHour] = pitch.start_time.split(':').map(Number);
+      const [endHour] = pitch.end_time.split(':').map(Number);
+      const selectedDate = format(date, 'yyyy-MM-dd');
+
+      const { data: bookings, error } = await supabase
+        .from('bookings')
+        .select('start_time, end_time')
+        .eq('pitch_id', pitch.id)
+        .eq('booking_date', selectedDate)
+        .in('status', ['confirmed', 'pending']);
+
+      if (error) throw error;
+
+      const now = new Date();
+      const uzbekistanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tashkent' }));
+      const currentHourUZ = uzbekistanTime.getHours();
+      const todayDateUZ = format(uzbekistanTime, 'yyyy-MM-dd');
+      const isToday = selectedDate === todayDateUZ;
+
+      const slots: TimeSlot[] = [];
+      let currentHour = startHour;
+
+      while (currentHour < endHour) {
+        if (isToday && currentHour <= currentHourUZ) {
+          currentHour++;
+          continue;
+        }
+
+        const slotStart = setMinutes(setHours(date, currentHour), 0);
+        const slotEnd = setMinutes(setHours(date, currentHour + 1), 0);
+        const slotStartTime = format(slotStart, 'HH:mm');
+        const slotEndTime = format(slotEnd, 'HH:mm');
+
         const isBooked = bookings?.some((booking) => {
-          // booking.start_time and booking.end_time are TIME strings like '18:00:00'
-          const bookingStart = booking.start_time;
-          const bookingEnd = booking.end_time;
-          
-          // Overlap logic: N_Start < E_End AND N_End > E_Start
+          const bookingStart = booking.start_time.substring(0, 5);
+          const bookingEnd = booking.end_time.substring(0, 5);
           return slotStartTime < bookingEnd && slotEndTime > bookingStart;
         });
 
@@ -103,10 +194,9 @@ export default function TimeSlotSheet({ pitch, date, onSelectSlot, onClose }: Ti
         currentHour++;
       }
 
-      console.log('✅ Generated slots:', slots.length);
       setTimeSlots(slots);
     } catch (error) {
-      console.error('Error generating time slots:', error);
+      console.error('Error in legacy method:', error);
     } finally {
       setLoading(false);
     }
