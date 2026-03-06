@@ -11,6 +11,7 @@ import { Loader2 } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 
 function Router() {
+  const { user, loading } = useAuth();
   const [route, setRoute] = useState(window.location.pathname);
 
   // Listen to browser back/forward
@@ -22,6 +23,26 @@ function Router() {
     window.history.pushState({}, '', path);
     setRoute(path);
   };
+
+  // Show loading while checking session
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-zinc-950">
+        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      </div>
+    );
+  }
+
+  // If user is logged in and trying to access login/register, redirect to dashboard
+  if (user && (route === '/login' || route === '/register')) {
+    window.location.href = '/';
+    return null;
+  }
+
+  // If user is not logged in and trying to access protected routes, show login
+  if (!user && route !== '/login' && route !== '/register') {
+    return <LoginPage />;
+  }
 
   if (route === '/register') {
     return <RegisterPage />;

@@ -1,74 +1,19 @@
 import { useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { verifyOTP, generateOTP } from '../../lib/smsService';
-import { UserPlus, Loader2, ArrowLeft, Send } from 'lucide-react';
+import { verifyOTPCode, generateOTP } from '../../lib/smsService';
+import { Loader2, Send } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
-type Step = 'phone' | 'verify';
+type Step = 'otp' | 'profile';
 
 export default function RegisterPage() {
-  const [step, setStep] = useState<Step>('phone');
-  const [name, setName] = useState('');
+  const [step, setStep] = useState<Step>('otp');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  // Telefon raqamni formatlash
-  const formatPhoneNumber = (value: string) => {
-    const digits = value.replace(/\D/g, '');
-    let formatted = '';
-    
-    if (digits.length === 0) return '';
-    
-    formatted = '+998';
-    
-    let remaining = digits;
-    if (digits.startsWith('998')) {
-      remaining = digits.slice(3);
-    } else {
-      remaining = digits;
-    }
-    
-    if (remaining.length > 0) formatted += ' ' + remaining.slice(0, 2);
-    if (remaining.length > 2) formatted += ' ' + remaining.slice(2, 5);
-    if (remaining.length > 5) formatted += ' ' + remaining.slice(5, 7);
-    if (remaining.length > 7) formatted += ' ' + remaining.slice(7, 9);
-    
-    return formatted;
-  };
-
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const input = e.target.value;
-    const formatted = formatPhoneNumber(input);
-    setPhone(formatted);
-  };
-
-  // Telegram bot orqali kod olish
-  const handleGetCode = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    // Validatsiya
-    if (!name.trim()) {
-      setError('Ismingizni kiriting');
-      return;
-    }
-
-    const phoneDigits = phone.replace(/\D/g, '');
-    if (phoneDigits.length !== 12 || !phoneDigits.startsWith('998')) {
-      setError('Telefon raqam to\'liq emas (12 raqam kerak)');
-      return;
-    }
-
-    // Telegram botga yo'naltirish
-    const botUrl = 'https://t.me/MyBronRobot';
-    window.open(botUrl, '_blank');
-    
-    // Keyingi qadamga o'tish
-    setStep('verify');
-    toast.success('Telegram botga o\'ting va kontaktingizni yuboring');
-  };
 
   // OTP input handling (42.uz stili)
   const handleOtpChange = (index: number, value: string) => {
@@ -109,7 +54,7 @@ export default function RegisterPage() {
     lastInput?.focus();
   };
 
-  // OTP ni tekshirish va admin yaratish
+  // OTP ni tekshirish
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -123,28 +68,69 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const phoneDigits = phone.replace(/\D/g, '');
+      // OTP ni tekshirish (faqat kod bilan)
+      const result = await verifyOTPCode(code);
 
-      // OTP ni tekshirish
-      const result = await verifyOTP(phoneDigits, code);
-
-      if (!result.success) {
+      if (!result.success || !result.phone) {
         setError(result.error || 'Noto\'g\'ri yoki muddati o\'tgan kod');
         setLoading(false);
         return;
       }
 
-      // Admin yaratish (Supabase Auth)
-      const email = `${phoneDigits}@bron.uz`;
-      const password = generateOTP() + generateOTP(); // 12 raqamli parol
+      // Check if user already exists in profiles table
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, phone')
+        .eq('phone', result.phone)
+        .single();
 
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // If user already exists, redirect to login
+      if (profileData && !profileError) {
+        setLoading(false);
+        toast.error('Sizda allaqachon hisob bor. Iltimos tizimga kiring');
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 1500);
+        return;
+      }
+
+      // New user - save phone and show profile form
+      setPhone(result.phone);
+      setStep('profile');
+      setLoading(false);
+      toast.success('Kod tasdiqlandi! Iltimos ma\'lumotlaringizni kiriting');
+
+    } catch (err: any) {
+      setError(err?.message || 'Xatolik yuz berdi');
+      setLoading(false);
+    }
+  };
+
+  // Profilni yaratish
+  const handleCreateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!firstName.trim() || !lastName.trim()) {
+      setError('Ism va familiyani kiriting');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Create admin account with persistent session
+      const email = `${phone}@bron.uz`;
+      const password = phone; // Use phone as password for simplicity
+
+      const { data: signUpData, error: authError } = await supabase.auth.signUp({
         email: email,
         password: password,
         options: {
           data: {
-            name: name.trim(),
-            phone: phoneDigits,
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
+            phone: phone,
             role: 'admin',
           },
         },
@@ -156,10 +142,10 @@ export default function RegisterPage() {
         return;
       }
 
-      // Muvaffaqiyatli
+      // Session is automatically created and persisted by Supabase
       toast.success('Admin hisobi yaratildi!');
       
-      // Dashboard ga yo'naltirish
+      // Redirect to dashboard
       setTimeout(() => {
         window.location.href = '/';
       }, 1500);
@@ -182,78 +168,44 @@ export default function RegisterPage() {
             />
           </div>
           <h1 className="text-2xl font-bold text-white mb-2">
-            {step === 'phone' ? 'Ro\'yxatdan o\'tish' : 'Kodni tasdiqlash'}
+            {step === 'otp' ? 'Ro\'yxatdan o\'tish' : 'Ma\'lumotlaringiz'}
           </h1>
           <p className="text-zinc-400">
-            {step === 'phone' 
-              ? 'Admin hisobini yaratish' 
-              : 'Telegram botdan kelgan kodni kiriting'}
+            {step === 'otp' 
+              ? 'Telegram botdan kelgan kodni kiriting' 
+              : 'Ism va familiyangizni kiriting'}
           </p>
         </div>
 
-        {step === 'phone' ? (
-          // 1-qadam: Ism va telefon raqam
-          <form onSubmit={handleGetCode} className="space-y-4">
-            {error && (
-              <div className="bg-red-950 border border-red-800 text-red-200 px-4 py-3 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2">
-                Ism
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                placeholder="Ismingiz"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2">
-                Telefon raqami
-              </label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={handlePhoneChange}
-                maxLength={17}
-                className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                placeholder="+998 90 123 45 67"
-                required
-              />
-              <p className="text-xs text-zinc-500 mt-1">
-                Format: +998 XX XXX XX XX
-              </p>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
-            >
-              <Send className="w-5 h-5" />
-              Telegram orqali kod olish
-            </button>
-
-            <div className="bg-blue-950/30 border border-blue-800/50 rounded-lg p-4">
-              <p className="text-sm text-blue-200">
-                📱 Telegram botga o'tib, kontaktingizni yuboring. Bot sizga 6 raqamli kod yuboradi.
-              </p>
-            </div>
-          </form>
-        ) : (
-          // 2-qadam: OTP tekshirish (42.uz stili)
+        {step === 'otp' ? (
+          // 1-qadam: OTP kodni kiriting
           <form onSubmit={handleVerifyOTP} className="space-y-6">
             {error && (
               <div className="bg-red-950 border border-red-800 text-red-200 px-4 py-3 rounded-lg text-sm">
                 {error}
               </div>
             )}
+
+            <div className="bg-blue-950/30 border border-blue-800/50 rounded-lg p-4 mb-6">
+              <p className="text-sm text-blue-200 mb-2">
+                📱 Telegram botdan kod olish:
+              </p>
+              <ol className="text-xs text-blue-300 space-y-1 ml-4 list-decimal">
+                <li>@MyBronRobot ga o'ting</li>
+                <li>/start bosing</li>
+                <li>Kontaktingizni yuboring</li>
+                <li>6 raqamli kodni oling</li>
+              </ol>
+              <a 
+                href="https://t.me/MyBronRobot" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="mt-3 w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                <Send className="w-4 h-4" />
+                Telegram botga o'tish
+              </a>
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-zinc-300 mb-4 text-center">
@@ -298,18 +250,58 @@ export default function RegisterPage() {
                 'Tasdiqlash'
               )}
             </button>
+          </form>
+        ) : (
+          // 2-qadam: Profil ma'lumotlari
+          <form onSubmit={handleCreateProfile} className="space-y-4">
+            {error && (
+              <div className="bg-red-950 border border-red-800 text-red-200 px-4 py-3 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-300 mb-2">
+                Ism
+              </label>
+              <input
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                placeholder="Ismingiz"
+                required
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-300 mb-2">
+                Familiya
+              </label>
+              <input
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                placeholder="Familiyangiz"
+                required
+              />
+            </div>
 
             <button
-              type="button"
-              onClick={() => {
-                setStep('phone');
-                setOtp(['', '', '', '', '', '']);
-                setError('');
-              }}
-              className="w-full text-zinc-400 hover:text-zinc-300 font-medium py-2 transition-colors flex items-center justify-center"
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-800 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center"
             >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Orqaga
+              {loading ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Yaratilmoqda...
+                </>
+              ) : (
+                'Hisobni yaratish'
+              )}
             </button>
           </form>
         )}

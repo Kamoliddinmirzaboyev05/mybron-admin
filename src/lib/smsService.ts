@@ -1,5 +1,5 @@
 // OTP Service - Telegram Bot Integration
-// SMS o'rniga Telegram bot orqali OTP yuborish
+// Simplified: Only OTP code verification
 
 import { supabase } from './supabase';
 
@@ -7,28 +7,16 @@ interface VerifyOTPResponse {
   success: boolean;
   message?: string;
   error?: string;
-  name?: string;
+  phone?: string;  // Phone number returned from database
 }
 
 /**
- * OTP kodni tekshirish (Telegram bot orqali yuborilgan)
- * @param phone - Telefon raqami (998901234567 formatida, faqat raqamlar)
+ * OTP kodni tekshirish (faqat kod bilan)
  * @param code - Tasdiqlash kodi (6 raqamli)
- * @returns Promise<VerifyOTPResponse>
+ * @returns Promise<VerifyOTPResponse> - Returns phone number if valid
  */
-export async function verifyOTP(phone: string, code: string): Promise<VerifyOTPResponse> {
+export async function verifyOTPCode(code: string): Promise<VerifyOTPResponse> {
   try {
-    // Telefon raqamni tozalash - faqat raqamlar ('+', ' ', '-' ni olib tashlash)
-    const cleanPhone = phone.replace(/\D/g, '');
-    
-    // Telefon raqam validatsiyasi
-    if (!cleanPhone || cleanPhone.length < 12) {
-      return {
-        success: false,
-        error: 'Telefon raqam noto\'g\'ri formatda (12 raqam kerak)',
-      };
-    }
-
     // Kod validatsiyasi
     if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
       return {
@@ -37,11 +25,10 @@ export async function verifyOTP(phone: string, code: string): Promise<VerifyOTPR
       };
     }
 
-    // OTP ni bazadan tekshirish
-    // MUHIM: Database funksiyasi verify_otp(p_code text, p_phone text) tartibida parametrlarni kutadi
+    // OTP ni bazadan tekshirish (faqat kod bilan)
+    // Database funksiyasi verify_otp(p_code text) telefon raqamni qaytaradi
     const { data: verifyData, error: verifyError } = await supabase.rpc('verify_otp', {
-      p_code: code,        // Birinchi parametr: kod
-      p_phone: cleanPhone, // Ikkinchi parametr: telefon (faqat raqamlar, '+' siz)
+      p_code: code,
     });
 
     if (verifyError) {
@@ -52,12 +39,12 @@ export async function verifyOTP(phone: string, code: string): Promise<VerifyOTPR
       };
     }
 
-    // Database funksiyasi boolean qaytaradi
-    // true = success, false = invalid/expired
-    if (verifyData === true) {
+    // Database funksiyasi telefon raqamni qaytaradi yoki null
+    if (verifyData && typeof verifyData === 'string') {
       return {
         success: true,
         message: 'Tasdiqlandi',
+        phone: verifyData,
       };
     } else {
       return {
