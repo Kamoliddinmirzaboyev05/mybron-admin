@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import LoginPage from './components/LoginPage';
-import RegisterPage from './components/RegisterPage';
 import DashboardPage from './components/DashboardPage';
 import BookingsPage from './components/BookingsPage';
 import SettingsPage from './components/SettingsPage';
 import ProfilePage from './components/ProfilePage';
 import BottomNav from './components/BottomNav';
+import Navbar from './components/Navbar';
 import { Loader2 } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 
@@ -33,19 +33,15 @@ function Router() {
     );
   }
 
-  // If user is logged in and trying to access login/register, redirect to dashboard
-  if (user && (route === '/login' || route === '/register')) {
+  // If user is logged in and trying to access login, redirect to dashboard
+  if (user && route === '/login') {
     window.location.href = '/';
     return null;
   }
 
   // If user is not logged in and trying to access protected routes, show login
-  if (!user && route !== '/login' && route !== '/register') {
+  if (!user && route !== '/login') {
     return <LoginPage />;
-  }
-
-  if (route === '/register') {
-    return <RegisterPage />;
   }
 
   if (route === '/login') {
@@ -77,11 +73,14 @@ function MainApp() {
   }
 
   return (
-    <div className="bg-zinc-950 min-h-screen">
-      {activeTab === 'dashboard' && <DashboardPage />}
-      {activeTab === 'bookings' && <BookingsPage />}
-      {activeTab === 'settings' && <SettingsPage />}
-      {activeTab === 'profile' && <ProfilePage />}
+    <div className="bg-zinc-950 min-h-screen flex flex-col">
+      <Navbar />
+      <div className="flex-1 pb-20">
+        {activeTab === 'dashboard' && <DashboardPage />}
+        {activeTab === 'bookings' && <BookingsPage />}
+        {activeTab === 'settings' && <SettingsPage />}
+        {activeTab === 'profile' && <ProfilePage />}
+      </div>
       <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />
     </div>
   );
